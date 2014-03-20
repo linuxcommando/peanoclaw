@@ -126,7 +126,7 @@ class MekkaFlood_solver {
                 EPSILON = 1.e-13;
                 Ratio_Close_cell = 1e-3;
                 MAX_SCAL = std::numeric_limits<double>::max();
-                RainIntensity = 0.001;
+                RainIntensity = 0.00001;
                 
                 FRICCOEF = 0.0; // TODO get real value for this
                 CFL_FIX = 0.5;

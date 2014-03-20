@@ -19,9 +19,9 @@
 // - infiltration: none
 // - friction: none
 
-const int VECTOR_LENGTH = 4;
+const int VECTOR_LENGTH = 1;
 
-static const double FZERO = 0;
+static const double FZERO = 0.;
 
 MekkaFlood_solver::MekkaFlood_solver()
 {
@@ -38,7 +38,7 @@ void MekkaFlood_solver::initializeStrideinfo(const Constants& constants, int dim
     int ny_ghost = constants.NYCELL + 2;
 
     strideinfo[0] = 1;
-    strideinfo[1] = static_cast<int>(std::ceil(static_cast<double>(ny_ghost) / static_cast<double>(VECTOR_LENGTH)) * VECTOR_LENGTH); // align in to a multiple of 4 (double) elements
+    strideinfo[1] = ny_ghost; //static_cast<int>(std::ceil(static_cast<double>(ny_ghost) / static_cast<double>(VECTOR_LENGTH)) * VECTOR_LENGTH); // align in to a multiple of 4 (double) elements
     strideinfo[2] = strideinfo[1] * nx_ghost;
 
     //std::cout << "strideinfo " << strideinfo[0] << " " << strideinfo[1] << " " << strideinfo[2] << " nx " << nx_ghost << " ny " << ny_ghost << std::endl;
@@ -52,6 +52,11 @@ void MekkaFlood_solver::allocateInput(int nr_patches, int dim, unsigned int* str
     posix_memalign(reinterpret_cast<void**>(&(input.u)), VECTOR_LENGTH*sizeof(double), totalsize);
     posix_memalign(reinterpret_cast<void**>(&(input.v)), VECTOR_LENGTH*sizeof(double), totalsize);
     posix_memalign(reinterpret_cast<void**>(&(input.z)), VECTOR_LENGTH*sizeof(double), totalsize);
+
+    /*memset(input.h, 0, totalsize);
+    memset(input.u, 0, totalsize);
+    memset(input.v, 0, totalsize);
+    memset(input.z, 0, totalsize);*/
 }
 
 void MekkaFlood_solver::allocateTemp(int nr_patches, int dim, unsigned int* strideinfo, TempArrays& temp) {
@@ -60,23 +65,43 @@ void MekkaFlood_solver::allocateTemp(int nr_patches, int dim, unsigned int* stri
 
     posix_memalign(reinterpret_cast<void**>(&(temp.h1r)), VECTOR_LENGTH*sizeof(double), totalsize);
     posix_memalign(reinterpret_cast<void**>(&(temp.h1l)), VECTOR_LENGTH*sizeof(double), totalsize);
- 
+  
+    /*memset(temp.h1r, 0, totalsize);
+    memset(temp.h1l, 0, totalsize);*/
+
     posix_memalign(reinterpret_cast<void**>(&(temp.u1r)), VECTOR_LENGTH*sizeof(double), totalsize);
     posix_memalign(reinterpret_cast<void**>(&(temp.u1l)), VECTOR_LENGTH*sizeof(double), totalsize);
+ 
+    /*memset(temp.u1r, 0, totalsize);
+    memset(temp.u1l, 0, totalsize);*/
 
     posix_memalign(reinterpret_cast<void**>(&(temp.v1r)), VECTOR_LENGTH*sizeof(double), totalsize);
     posix_memalign(reinterpret_cast<void**>(&(temp.v1l)), VECTOR_LENGTH*sizeof(double), totalsize);
+ 
+    /*memset(temp.v1r, 0, totalsize);
+    memset(temp.v1l, 0, totalsize);*/
 
     posix_memalign(reinterpret_cast<void**>(&(temp.z1r)), VECTOR_LENGTH*sizeof(double), totalsize);
     posix_memalign(reinterpret_cast<void**>(&(temp.z1l)), VECTOR_LENGTH*sizeof(double), totalsize);
- 
+  
+    /*memset(temp.z1r, 0, totalsize);
+    memset(temp.z1l, 0, totalsize);*/
+
     posix_memalign(reinterpret_cast<void**>(&(temp.delta_z1)), VECTOR_LENGTH*sizeof(double), totalsize);
     posix_memalign(reinterpret_cast<void**>(&(temp.delzc1)), VECTOR_LENGTH*sizeof(double), totalsize);
     posix_memalign(reinterpret_cast<void**>(&(temp.delz1)), VECTOR_LENGTH*sizeof(double), totalsize);
- 
+  
+    /*memset(temp.delta_z1, 0, totalsize);
+    memset(temp.delzc1, 0, totalsize);
+    memset(temp.delz1, 0, totalsize);*/
+
     posix_memalign(reinterpret_cast<void**>(&(temp.h2r)), VECTOR_LENGTH*sizeof(double), totalsize);
     posix_memalign(reinterpret_cast<void**>(&(temp.h2l)), VECTOR_LENGTH*sizeof(double), totalsize);
- 
+  
+    /*memset(temp.delta_z1, 0, totalsize);
+    memset(temp.delzc1, 0, totalsize);
+    memset(temp.delz1, 0, totalsize);*/
+
     posix_memalign(reinterpret_cast<void**>(&(temp.u2r)), VECTOR_LENGTH*sizeof(double), totalsize);
     posix_memalign(reinterpret_cast<void**>(&(temp.u2l)), VECTOR_LENGTH*sizeof(double), totalsize);
  
@@ -107,11 +132,25 @@ void MekkaFlood_solver::allocateTemp(int nr_patches, int dim, unsigned int* stri
     posix_memalign(reinterpret_cast<void**>(&(temp.qs1)), VECTOR_LENGTH*sizeof(double), totalsize);
     posix_memalign(reinterpret_cast<void**>(&(temp.qs2)), VECTOR_LENGTH*sizeof(double), totalsize);
   
+    // these ones are important! otherwise the solver will read junk values
+    // TODO: do we have to initialize them in a certain way? 
+    // or do we have to deal with the boundaries in a particular way?
+    memset(temp.hs, 0, totalsize); 
+    memset(temp.us, 0, totalsize);
+    memset(temp.vs, 0, totalsize);
+
     posix_memalign(reinterpret_cast<void**>(&(temp.hsa)), VECTOR_LENGTH*sizeof(double), totalsize);
     posix_memalign(reinterpret_cast<void**>(&(temp.usa)), VECTOR_LENGTH*sizeof(double), totalsize);
     posix_memalign(reinterpret_cast<void**>(&(temp.vsa)), VECTOR_LENGTH*sizeof(double), totalsize);
     posix_memalign(reinterpret_cast<void**>(&(temp.qsa1)), VECTOR_LENGTH*sizeof(double), totalsize);
     posix_memalign(reinterpret_cast<void**>(&(temp.qsa2)), VECTOR_LENGTH*sizeof(double), totalsize);
+  
+    // these ones are important! otherwise the solver will read junk values
+    // TODO: do we have to initialize them in a certain way? 
+    // or do we have to deal with the boundaries in a particular way?
+    memset(temp.hsa, 0, totalsize);
+    memset(temp.usa, 0, totalsize);
+    memset(temp.vsa, 0, totalsize);
 
     posix_memalign(reinterpret_cast<void**>(&(temp.Vin1)), VECTOR_LENGTH*sizeof(double), totalsize);
     posix_memalign(reinterpret_cast<void**>(&(temp.Vin2)), VECTOR_LENGTH*sizeof(double), totalsize);
@@ -260,7 +299,28 @@ double MekkaFlood_solver::calcul(const int patchid, int dim, unsigned int* strid
     } //end for j
   } //end for i
 #endif
- 
+
+  // TODO: now this is really different to the FullSWOF2D solver:
+  // boundary initialization of first and second step solutions
+  // basically: just copy complete input to temporary inputs, because i am lazy!
+  // (we only need the boundaries)
+  for (int i=0 ; i<=NXCELL+1 ; i++){
+    for (int j=0 ; j<=NYCELL+1 ; j++){
+        index[0] = j;
+        index[1] = i;
+        index[2] = patchid;
+        unsigned int centerIndex = linearizeIndex(3, index, strideinfo);
+	
+      temp.hs[centerIndex]=input.h[centerIndex];
+      temp.us[centerIndex]=input.u[centerIndex];
+      temp.vs[centerIndex]=input.v[centerIndex];
+      
+      temp.hsa[centerIndex]=input.h[centerIndex];
+      temp.usa[centerIndex]=input.u[centerIndex];
+      temp.vsa[centerIndex]=input.v[centerIndex];
+    } //end for j
+  }//end for i
+
 
   rec_muscl_init(patchid, dim, strideinfo, input, temp, constants);
 
