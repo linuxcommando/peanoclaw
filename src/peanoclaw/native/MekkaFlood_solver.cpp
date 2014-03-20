@@ -300,11 +300,14 @@ double MekkaFlood_solver::calcul(const int patchid, int dim, unsigned int* strid
   } //end for i
 #endif
 
+  rec_muscl_init(patchid, dim, strideinfo, input, temp, constants);
+ 
   // TODO: now this is really different to the FullSWOF2D solver:
   // boundary initialization of first and second step solutions
   // basically: just copy complete input to temporary inputs, because i am lazy!
   // (we only need the boundaries)
-  for (int i=0 ; i<=NXCELL+1 ; i++){
+  // However: even with this included: the FullSWOF2D solver still behaves a litte bit different
+  /*for (int i=0 ; i<=NXCELL+1 ; i++){
     for (int j=0 ; j<=NYCELL+1 ; j++){
         index[0] = j;
         index[1] = i;
@@ -319,10 +322,7 @@ double MekkaFlood_solver::calcul(const int patchid, int dim, unsigned int* strid
       temp.usa[centerIndex]=input.u[centerIndex];
       temp.vsa[centerIndex]=input.v[centerIndex];
     } //end for j
-  }//end for i
-
-
-  rec_muscl_init(patchid, dim, strideinfo, input, temp, constants);
+  }//end for i*/
 
   double dt2 = 0.0;
   
