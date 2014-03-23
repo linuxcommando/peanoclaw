@@ -141,9 +141,11 @@ double peanoclaw::native::FullSWOF2D::solveTimestep(Patch& patch, double maximum
         MekkaFlood_solver::allocateInput(nr_patches, 3, strideinfo, input);
         MekkaFlood_solver::allocateTemp(nr_patches, 3, strideinfo, temp);
 
+        MekkaFlood_solver solver;
+
         copyPatchToSet(patch, strideinfo,input, temp);
         double newMaximumTimestepSize = maximumTimestepSize;
-        double dt_used = MekkaFlood_solver::calcul(patchid, 3, strideinfo, input, temp, constants, newMaximumTimestepSize);
+        double dt_used = solver.calcul(patchid, 3, strideinfo, input, temp, constants, newMaximumTimestepSize);
         //std::cout << "dt_used " << dt_used << " maximumTimestepSize " << maximumTimestepSize << " newMaximumTimestepSize " << newMaximumTimestepSize <<std::endl;
         copySetToPatch(strideinfo,input, temp, patch);
 
