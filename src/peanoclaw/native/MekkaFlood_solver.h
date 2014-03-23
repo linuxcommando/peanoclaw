@@ -6,9 +6,8 @@
 #include <limits> 
 
 class MekkaFlood_solver {
-    protected:
 
-    private:
+    protected:
         // this structs are not allocated and serve just as links to temp data
         struct SchemeArrays {
             double *h;
@@ -18,6 +17,7 @@ class MekkaFlood_solver {
             double *q2;
             double *z;
         };
+
 
     public:
         struct InputArrays {
@@ -130,6 +130,8 @@ class MekkaFlood_solver {
                 
                 FRICCOEF = 0.0; // TODO get real value for this
                 CFL_FIX = 0.5;
+
+                dt_max_grid = std::min(DX*CFL_FIX,DY*CFL_FIX);
             }
 
             double GRAV; // 9.81
@@ -160,7 +162,36 @@ class MekkaFlood_solver {
             const int NYCELL;
             const double DX;
             const double DY;
+
+            double dt_max_grid;
         };
+  
+        struct Timings {
+            void reset() {
+                rec_muscl = 0.0;
+                rec_muscl_samples = 0;
+
+                maincalcscheme = 0.0;
+                maincalcscheme_samples = 0;
+
+                maincalcflux = 0.0;
+                maincalcflux_samples = 0;
+            }
+
+            double rec_muscl;
+            int rec_muscl_samples;
+  
+            double maincalcflux;
+            int maincalcflux_samples;
+
+            double maincalcscheme;
+            int maincalcscheme_samples;
+        };
+
+        Timings timings;
+
+
+    public:
 
         // index helper
         static inline unsigned int linearizeIndex(int dim, unsigned int* index, unsigned int* strides) {
@@ -177,21 +208,25 @@ class MekkaFlood_solver {
         static void freeInput(InputArrays& input);
         static void freeTemp(TempArrays& temp);
 
+        static void compareTimings(const Timings& timing1, const Timings& timing2);
+
         MekkaFlood_solver();
         virtual ~MekkaFlood_solver();
 
         // returns used timestep
-        static double calcul(const int patchid, int dim, unsigned int* strideinfo, InputArrays& input, TempArrays& temp, const Constants& constants, double& dtMax); // dt_max will be set internally
+        virtual double calcul(const int patchid, int dim, unsigned int* strideinfo, InputArrays& input, TempArrays& temp, const Constants& constants, double& dtMax); // dt_max will be set internally
 
         static void boundary(const int patchid, int dim, unsigned int* strideinfo, SchemeArrays& input, TempArrays& temp, const Constants& constants,
                              double time_tmp);
-        
+ 
+        static void filterInput(const int patchid, int dim, unsigned int* strideinfo, SchemeArrays& input, const Constants& constants);
+
         // minmod slope limiter
         static double lim_minmod(double a, double b);
 
         // muscl reconstruction
-        static void rec_muscl_init(const int patchid, int dim, unsigned int* strideinfo, InputArrays& input, TempArrays& temp, const Constants& constants);
-        static void rec_muscl(const int patchid, int dim, unsigned int* strideinfo, SchemeArrays& input, TempArrays& temp, const Constants& constants);
+        virtual void rec_muscl_init(const int patchid, int dim, unsigned int* strideinfo, InputArrays& input, TempArrays& temp, const Constants& constants);
+        virtual void rec_muscl(const int patchid, int dim, unsigned int* strideinfo, SchemeArrays& input, TempArrays& temp, const Constants& constants);
 
         // hydrostatic reconstruction
         static void rec_hydro(double hg, double hd,double dz, double& hg_rec, double& hd_rec);
@@ -212,10 +247,12 @@ class MekkaFlood_solver {
                                  double dt);
 
         // general scheme:
-        static void maincalcflux(const int patchid, int dim, unsigned int* strideinfo, TempArrays& temp, const Constants& constants,
+        virtual void maincalcflux(const int patchid, int dim, unsigned int* strideinfo, TempArrays& temp, const Constants& constants,
                                  double cflfix, double dt_max, double& dt); // dt is both input AND output
-        static void maincalcscheme(const int patchid, int dim, unsigned int* strideinfo, SchemeArrays& input, SchemeArrays& output, TempArrays& temp, const Constants& constants,
+        virtual void maincalcscheme(const int patchid, int dim, unsigned int* strideinfo, SchemeArrays& input, SchemeArrays& output, TempArrays& temp, const Constants& constants,
                                    double tps, double dt, int verif); // there was originally a "n" input parameter which was not used here.
+
+        static void heun(const int patchid, int dim, unsigned int* strideinfo, InputArrays& input, TempArrays& temp, const Constants& constants);
 };
 
 #endif // _MEKKAFLOOD_SOLVER_H_

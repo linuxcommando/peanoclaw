@@ -7,7 +7,7 @@
 #include <cmath>
 #include <cstring>
 
-#include "peanoclaw/native/MekkaFlood_solver.h"
+#include "MekkaFlood_solver.h"
 
 //#define DEBUG
 
@@ -19,7 +19,7 @@
 // - infiltration: none
 // - friction: none
 
-const int VECTOR_LENGTH = 1;
+const int VECTOR_LENGTH = 2;
 
 static const double FZERO = 0.;
 
@@ -247,7 +247,29 @@ void MekkaFlood_solver::freeTemp(TempArrays& temp) {
     free(temp.Tab_rain);
 }
 
+void MekkaFlood_solver::compareTimings(const Timings& left, const Timings& right) {
+    std::cout << "left vs right: timings" << std::endl;
+    
+    std::cout << "rec_muscl left_total " << left.rec_muscl << " left_avg " << left.rec_muscl / left.rec_muscl_samples 
+              << " right_total " << right.rec_muscl << " right_avg " << right.rec_muscl / right.rec_muscl_samples 
+              << std::endl;
 
+    std::cout << "maincalcflux left_total " << left.maincalcflux << " left_avg " << left.maincalcflux / left.maincalcflux_samples 
+              << " right_total " << right.maincalcflux << " right_avg " << right.maincalcflux / right.maincalcflux_samples
+              << std::endl;
+
+    std::cout << "maincalcscheme left_total " << left.maincalcscheme <<  " left_avg "  << left.maincalcscheme / left.maincalcscheme_samples 
+              << " right_total " << right.maincalcscheme << " right_avg " << right.maincalcscheme / right.maincalcscheme_samples
+              << std::endl;
+
+    double left_sum_total = left.rec_muscl + left.maincalcflux + left.maincalcscheme;
+    double right_sum_total = right.rec_muscl + right.maincalcflux + right.maincalcscheme;
+    std::cout << "sum left_total " << left_sum_total 
+              << " right_total " << right_sum_total
+              << std::endl;
+}
+
+// TODO: basically: the whole kernel may be computed on the GPU
 double MekkaFlood_solver::calcul(const int patchid, int dim, unsigned int* strideinfo, InputArrays& input, TempArrays& temp, const Constants& constants, double& dtMax) {
 	/**
 	 * @details Performs the second order numerical scheme.
@@ -259,47 +281,52 @@ double MekkaFlood_solver::calcul(const int patchid, int dim, unsigned int* strid
 
     unsigned int index[3];
 
+    // TODO: upload host input to GPU input
+
   //initialization
-
+    { // run on GPU
 #if 1
-  for (int i=1 ; i<=NXCELL ; i++){
-    for (int j=1 ; j<=NYCELL ; j++){
-        index[0] = j;
-        index[1] = i;
-        index[2] = patchid;
-        unsigned int centerIndex = linearizeIndex(3, index, strideinfo);
-	
-      //h[i][j] =0.001;
-      temp.q1[centerIndex] = input.u[centerIndex]*input.h[centerIndex];
-      temp.q2[centerIndex] = input.v[centerIndex]*input.h[centerIndex];
-    } //end for j
-  } //end for i
+      for (int i=1 ; i<=NXCELL ; i++){
+        for (int j=1 ; j<=NYCELL ; j++){
+            index[0] = j;
+            index[1] = i;
+            index[2] = patchid;
+            unsigned int centerIndex = linearizeIndex(3, index, strideinfo);
+        
+          //h[i][j] =0.001;
+          temp.q1[centerIndex] = input.u[centerIndex]*input.h[centerIndex];
+          temp.q2[centerIndex] = input.v[centerIndex]*input.h[centerIndex];
+        } //end for j
+      } //end for i
 #endif
 
-  for (int i=0 ; i<=NXCELL+1 ; i++){
-    for (int j=0 ; j<=NYCELL+1 ; j++){
-        index[0] = j;
-        index[1] = i;
-        index[2] = patchid;
-        unsigned int centerIndex = linearizeIndex(3, index, strideinfo);
-	
-      temp.Fric_tab[centerIndex]=constants.FRICCOEF;
-    } //end for j
-  }//end for i
+      for (int i=0 ; i<=NXCELL+1 ; i++){
+        for (int j=0 ; j<=NYCELL+1 ; j++){
+            index[0] = j;
+            index[1] = i;
+            index[2] = patchid;
+            unsigned int centerIndex = linearizeIndex(3, index, strideinfo);
+        
+          temp.Fric_tab[centerIndex]=constants.FRICCOEF;
+        } //end for j
+      }//end for i
 
 #if 1
-  for (int i=1 ; i<=NXCELL ; i++){
-    for (int j=1 ; j<=NYCELL ; j++){
-        index[0] = j;
-        index[1] = i;
-        index[2] = patchid;
-        unsigned int centerIndex = linearizeIndex(3, index, strideinfo);
-	
-        temp.Vin_tot[centerIndex] = FZERO;
-    } //end for j
-  } //end for i
+      for (int i=1 ; i<=NXCELL ; i++){
+        for (int j=1 ; j<=NYCELL ; j++){
+            index[0] = j;
+            index[1] = i;
+            index[2] = patchid;
+            unsigned int centerIndex = linearizeIndex(3, index, strideinfo);
+        
+            temp.Vin_tot[centerIndex] = FZERO;
+        } //end for j
+      } //end for i
 #endif
 
+  }
+
+    // run on GPU
   rec_muscl_init(patchid, dim, strideinfo, input, temp, constants);
  
   // TODO: now this is really different to the FullSWOF2D solver:
@@ -326,9 +353,11 @@ double MekkaFlood_solver::calcul(const int patchid, int dim, unsigned int* strid
 
   double dt2 = 0.0;
   
-  // PEANOCLAW:
-  double dt_max_grid = std::min(constants.DX*constants.CFL_FIX,constants.DY*constants.CFL_FIX);
-  double dt_max = std::min(dtMax, dt_max_grid);
+  // this is now computed in constants 
+  //double dt_max_grid = std::min(constants.DX*constants.CFL_FIX,constants.DY*constants.CFL_FIX);
+  
+  // PEANOCLAW: select the minimum between desired timestep and maximum possible timestep
+  double dt_max = std::min(dtMax, constants.dt_max_grid);
 
   int verif = 1; // TODO: this might actually go to zero
   
@@ -340,6 +369,10 @@ double MekkaFlood_solver::calcul(const int patchid, int dim, unsigned int* strid
   double tps = FZERO; // TODO: current simulation time. however, we do not have time changing boundaries
 
   int n = 0;
+
+  // TIMINGS:
+  struct timeval start_tv;
+  struct timeval stop_tv;
 
   while (n < 1) {
 
@@ -365,38 +398,26 @@ double MekkaFlood_solver::calcul(const int patchid, int dim, unsigned int* strid
       dt1=dt_max;
  
       //boundary conditions
+      // done on gpu
       boundary(patchid, dim, strideinfo, sinput1, temp, constants, tps);
        
-
-      for (int i=1 ; i<NXCELL+1 ; i++){
-        for (int j=1 ; j<NYCELL+1 ; j++){
-            index[0] = j;
-            index[1] = i;
-            index[2] = patchid;
-            unsigned int centerIndex = linearizeIndex(3, index, strideinfo);
-        
-          if (input.h[centerIndex]<=constants.HE_CA) {
-            input.h[centerIndex]=FZERO;
-            input.u[centerIndex] = FZERO;
-            input.v[centerIndex] = FZERO;
-          }
-          if (fabs(input.u[centerIndex])<=constants.VE_CA){
-            input.u[centerIndex]=FZERO;
-            temp.q1[centerIndex]=FZERO;
-          }
-          if (fabs(input.v[centerIndex])<=constants.VE_CA){
-            input.v[centerIndex]=FZERO;
-            temp.q2[centerIndex]=FZERO;
-          }
-        } //end for j
-      } //end for i
- 
+      // done on GPU
+      filterInput(patchid, dim, strideinfo, sinput1, constants);
 
       // Reconstruction for order 2:
+      gettimeofday(&start_tv, NULL);
+
+      // done on GPU
       rec_muscl(patchid, dim, strideinfo, sinput1, temp, constants);
-    
+      gettimeofday(&stop_tv, NULL);
+      timings.rec_muscl += (stop_tv.tv_sec - start_tv.tv_sec) + (stop_tv.tv_usec - start_tv.tv_usec) / 1000000.0;
+      timings.rec_muscl_samples++;
+
     }else{//if verif==0, ie dt2<dt1
         /*We return to the value of the previous time (i.e time=n) */
+    
+
+      // done on gpu
       for (int i=1 ; i<NXCELL+1 ; i++) {
         for (int j=1 ; j<NYCELL+1 ; j++) {
             index[0] = j;
@@ -412,8 +433,15 @@ double MekkaFlood_solver::calcul(const int patchid, int dim, unsigned int* strid
 #if defined(DEBUG)
     std::cout << "first calcflux" << std::endl;
 #endif
-
+    
+    gettimeofday(&start_tv, NULL);
+    // done on gpu
     maincalcflux(patchid, dim, strideinfo, temp, constants, constants.CFL_FIX, dt_max, dt1);
+    gettimeofday(&stop_tv, NULL);
+    timings.maincalcflux += (stop_tv.tv_sec - start_tv.tv_sec) + (stop_tv.tv_usec - start_tv.tv_usec) / 1000000.0;
+    timings.maincalcflux_samples++;
+
+
 #if 0 // TODO: as this is controlled by peanoclaw we can always assume the full possible timestep
     dt1=min(T-tps,dt1);
 #endif
@@ -424,9 +452,13 @@ double MekkaFlood_solver::calcul(const int patchid, int dim, unsigned int* strid
 #if defined(DEBUG)
     std::cout << "first calcscheme" << std::endl;
 #endif
-
+ 
+    gettimeofday(&start_tv, NULL);
     maincalcscheme(patchid, dim, strideinfo, sinput1, sinput2, temp, constants, tps, dt1, verif); // careful, this generate new data which will be used as input in the second step
-  
+    gettimeofday(&stop_tv, NULL);
+    timings.maincalcscheme += (stop_tv.tv_sec - start_tv.tv_sec) + (stop_tv.tv_usec - start_tv.tv_usec) / 1000000.0;
+    timings.maincalcscheme_samples++;
+
 #if defined(DEBUG)
     std::cout << "check after first calcscheme: dt1 " << dt1 << " verif " << verif << std::endl;
 #endif
@@ -439,41 +471,26 @@ double MekkaFlood_solver::calcul(const int patchid, int dim, unsigned int* strid
     //boundary conditions
     boundary(patchid, dim, strideinfo, sinput2, temp, constants, tps+dt1);
 
-    for (int i=1 ; i<NXCELL+1 ; i++){
-      for (int j=1 ; j<NYCELL+1 ; j++){
-            index[0] = j;
-            index[1] = i;
-            index[2] = patchid;
-            unsigned int centerIndex = linearizeIndex(3, index, strideinfo);
- 
-        if (temp.hs[centerIndex]<=constants.HE_CA) { // blend / select operation
-          temp.hs[centerIndex]=0.;
-          temp.us[centerIndex] = 0.;
-          temp.vs[centerIndex] = 0.;
-          temp.qs1[centerIndex]=0.;
-          temp.qs2[centerIndex]=0.;
-        }
-        if (fabs(temp.us[centerIndex])<=constants.VE_CA){ // blend / select operation
-          temp.us[centerIndex]=0.;
-          temp.qs1[centerIndex]=0.;
-        }
-        if (fabs(temp.vs[centerIndex])<=constants.VE_CA){ // blend / select operation
-          temp.vs[centerIndex]=0.;
-          temp.qs2[centerIndex]=0.;
-        }
-      } //end for j
-    } //end for i
+    filterInput(patchid, dim, strideinfo, sinput2, constants);
   
     //Reconstruction for order 2 
+    gettimeofday(&start_tv, NULL);
     rec_muscl(patchid, dim, strideinfo, sinput2, temp, constants);
-   
+    gettimeofday(&stop_tv, NULL);
+    timings.rec_muscl += (stop_tv.tv_sec - start_tv.tv_sec) + (stop_tv.tv_usec - start_tv.tv_usec) / 1000000.0;
+    timings.rec_muscl_samples++;
+
     //commun bloc
 #if defined(DEBUG)
     std::cout << "second calcflux" << std::endl;
 #endif
-
+ 
+    gettimeofday(&start_tv, NULL);
     maincalcflux(patchid, dim, strideinfo, temp, constants, constants.CFL_FIX, dt_max, dt2);
-  
+    gettimeofday(&stop_tv, NULL);
+    timings.maincalcflux += (stop_tv.tv_sec - start_tv.tv_sec) + (stop_tv.tv_usec - start_tv.tv_usec) / 1000000.0;
+    timings.maincalcflux_samples++;
+
 #if defined(DEBUG)
     std::cout << "check before verif is zero: dt2 " << dt2 << " dt1 " << dt1 << std::endl;
 #endif
@@ -505,56 +522,16 @@ double MekkaFlood_solver::calcul(const int patchid, int dim, unsigned int* strid
 #if defined(DEBUG)
     std::cout << "second calcscheme" << std::endl;
 #endif
+ 
+    gettimeofday(&start_tv, NULL);
     maincalcscheme(patchid, dim, strideinfo, sinput2, soutput, temp, constants, tps, dt1, verif); // takes new input arguments  and generate and third set of input arguments
-     
-      /*the values of height_Vinf_tot and height_of_tot put to zero
-	to compute infiltrated and overland flow volume*/
-      double height_Vinf_tot=FZERO;  
-      double height_of_tot=FZERO;  
-      //Heun method (order 2 in time)
-      for (int i=1 ; i<NXCELL+1 ; i++){
-        for (int j=1 ; j<NYCELL+1 ; j++){
-            index[0] = j;
-            index[1] = i;
-            index[2] = patchid;
-            unsigned int centerIndex = linearizeIndex(3, index, strideinfo);
+    gettimeofday(&stop_tv, NULL);
+    timings.maincalcscheme += (stop_tv.tv_sec - start_tv.tv_sec) + (stop_tv.tv_usec - start_tv.tv_usec) / 1000000.0;
+    timings.maincalcscheme_samples++;
 
-              if (temp.hsa[centerIndex]<=constants.HE_CA) {   temp.hsa[centerIndex]=0.;};
-              if (std::abs(temp.usa[centerIndex])<=constants.VE_CA) {   temp.usa[centerIndex]=0.;};
-              if (std::abs(temp.vsa[centerIndex])<=constants.VE_CA) {   temp.vsa[centerIndex]=0.;};
-              double tmp = 0.5*(input.h[centerIndex]+temp.hsa[centerIndex]);
-              if (tmp>=constants.HE_CA){
-                temp.q1[centerIndex] = 0.5*(input.h[centerIndex]*input.u[centerIndex]+temp.hsa[centerIndex]*temp.usa[centerIndex]);
-                input.u[centerIndex] = temp.q1[centerIndex]/tmp;
-                temp.q2[centerIndex] = 0.5*(input.h[centerIndex]*input.v[centerIndex]+temp.hsa[centerIndex]*temp.vsa[centerIndex]);
-                input.v[centerIndex] = temp.q2[centerIndex]/tmp;
-                input.h[centerIndex] = tmp;
-              }else{
-                input.u[centerIndex] = 0.;
-                temp.q1[centerIndex] = 0.;
-                input.v[centerIndex] = 0.;
-                temp.q2[centerIndex] = 0.;
-                input.h[centerIndex] = 0.;
-              }
-             
-          temp.Vin_tot[centerIndex] = (temp.Vin1[centerIndex] + temp.Vin2[centerIndex])*0.5;
 
-          temp.Vin1[centerIndex]=temp.Vin_tot[centerIndex];
-          temp.Vin2[centerIndex]=temp.Vin_tot[centerIndex];
-
-          height_Vinf_tot+= temp.Vin_tot[centerIndex];  
-          height_of_tot+=input.h[centerIndex];
-        } //end for j
-      } //end for i
-
-#if 0
-      /*Computation of the cumulated infiltrated volume*/
-      double Vol_inf_tot_cumul=height_Vinf_tot*DX*DY;
-
-      /*Computation of the overland flow volume*/
-      double Vol_of_tot=height_of_tot*DX*DY;
-
-#endif
+    // done on GPU
+    heun(patchid, dim, strideinfo, input, temp, constants);
 
       tps=tps+dt1;
       n=n+1;
@@ -565,6 +542,8 @@ double MekkaFlood_solver::calcul(const int patchid, int dim, unsigned int* strid
 
     // set our used maximum timestep as output
     dtMax = dt_max;
+ 
+    // TODO: download updated host input from GPU input
 
     return dt1; // this is the timestep which was used for this iteration
 }
@@ -604,6 +583,44 @@ void MekkaFlood_solver::boundary(const int patchid, int dim, unsigned int* strid
 #endif
 }
 
+void MekkaFlood_solver::filterInput(const int patchid, int dim, unsigned int* strideinfo, 
+                                           SchemeArrays& input, const Constants& constants)
+{
+    const int NXCELL = constants.NXCELL;
+    const int NYCELL = constants.NYCELL;
+ 
+    unsigned int index[3];
+
+      for (int i=1 ; i<NXCELL+1 ; i++){
+        for (int j=1 ; j<NYCELL+1 ; j++){
+            index[0] = j;
+            index[1] = i;
+            index[2] = patchid;
+            unsigned int centerIndex = linearizeIndex(3, index, strideinfo);
+        
+          if (input.h[centerIndex]<=constants.HE_CA) {
+            input.h[centerIndex]=FZERO;
+            input.u[centerIndex] = FZERO;
+            input.v[centerIndex] = FZERO;
+            
+            // TODO: this was additionally done for the first intermediate step
+            // do we need it? maybe this helps us to optimize this blend prozedure
+            //input.q1[centerIndex]=0.;
+            //inout.q2[centerIndex]=0.;
+
+          }
+          if (fabs(input.u[centerIndex])<=constants.VE_CA){
+            input.u[centerIndex]=FZERO;
+            input.q1[centerIndex]=FZERO;
+
+          }
+          if (fabs(input.v[centerIndex])<=constants.VE_CA){
+            input.v[centerIndex]=FZERO;
+            input.q2[centerIndex]=FZERO;
+          }
+        } //end for j
+      } //end for i
+}
 
 double MekkaFlood_solver::lim_minmod(double a, double b) {
     double rec;
@@ -704,26 +721,33 @@ void MekkaFlood_solver::rec_muscl(const int patchid, int dim, unsigned int* stri
     const int NXCELL = constants.NXCELL;
     const int NYCELL = constants.NYCELL;
 
-	for(int j=1 ; j<NYCELL+1 ; j++){
-        index[0] = j; // >= 1
+    // this kernel has the _real_ potential to stress the compiler
+    // TODO: compiler does not recognize blend operations, do some reformulations to make it more obvious
+ 
+    {
+        index[0] = 0; // >= 1
         index[1] = 0; // i
         index[2] = patchid;
-        leftIndex = linearizeIndex(3, index, strideinfo);
-	
-        index[0] = j;
-        index[1] = 1; // i
-        index[2] = patchid;
         centerIndex = linearizeIndex(3, index, strideinfo);
-	
-		temp.h1r[leftIndex] = input.h[leftIndex];
-		temp.u1r[leftIndex] = input.u[leftIndex];
-		temp.v1r[leftIndex] = input.v[leftIndex];
+        for (int j=1; j < NYCELL+1; j++) { // case for x=0
+            temp.h1r[centerIndex+j] = input.h[centerIndex+j];
+            temp.u1r[centerIndex+j] = input.u[centerIndex+j];
+            temp.v1r[centerIndex+j] = input.v[centerIndex+j];
+        }
+    }
+    
+    for(int i=1 ; i<NXCELL+1 ; i++){
+       for(int j=1 ; j<NYCELL+1 ; j++){
+            //--- horizonzal stencil
+            // input: h, u, v
+            // output: h1r, h1l, u1r, u1l, v1r, v1l
+            // u1r, v1r depend on h and h1r (RAW)
+            // u1l, v1l depend on h and h1l (RAW)
+            index[0] = j;
+            index[1] = i;
+            index[2] = patchid;
+            centerIndex = linearizeIndex(3, index, strideinfo);
 
-		double delta_h1 = input.h[centerIndex] - input.h[leftIndex]; //delta_h1 = h[1][j]-h[0][j];
-		double delta_u1 = input.u[centerIndex] - input.u[leftIndex]; //delta_u1 = u[1][j]-u[0][j];
-		double delta_v1 = input.v[centerIndex] - input.v[leftIndex]; //delta_v1 = v[1][j]-v[0][j];
-
-		for(int i=1 ; i<NXCELL+1 ; i++){
             index[0] = j;
             index[1] = i+1;
             index[2] = patchid;
@@ -734,86 +758,54 @@ void MekkaFlood_solver::rec_muscl(const int patchid, int dim, unsigned int* stri
             index[2] = patchid;
             leftIndex = linearizeIndex(3, index, strideinfo);
      
-            index[0] = j;
-            index[1] = i;
-            index[2] = patchid;
-            centerIndex = linearizeIndex(3, index, strideinfo);
+            double h_center = input.h[centerIndex];
 
-			double delta_h2 = input.h[rightIndex]-input.h[centerIndex]; // delta_h2 = h[i+1][j]-h[i][j];
+            double delta_h1 = h_center - input.h[leftIndex]; //delta_h1 = h[1][j]-h[0][j];
+			double delta_h2 = input.h[rightIndex]- h_center; // delta_h2 = h[i+1][j]-h[i][j];
+			double dh = lim_minmod(delta_h1,delta_h2);
+
+            double h1r_local = h_center + dh*0.5;
+            double h1l_local = h_center - dh*0.5;
+
+            double delta_u1 = input.u[centerIndex] - input.u[leftIndex]; //delta_u1 = u[1][j]-u[0][j];
 			double delta_u2 = input.u[rightIndex]-input.u[centerIndex]; // delta_u2 = u[i+1][j]-u[i][j];
+            double delta_v1 = input.v[centerIndex] - input.v[leftIndex]; //delta_v1 = v[1][j]-v[0][j];
             double delta_v2 = input.v[rightIndex]-input.v[centerIndex]; // delta_v2 = v[i+1][j]-v[i][j];
 
-            // TODO: calls to method, let us see how much this actually hurts
-            // maybe we have to provide the return value by reference?
-			double dh = lim_minmod(delta_h1,delta_h2);
-			double dz_h = lim_minmod(delta_h1+temp.delta_z1[leftIndex],delta_h2+temp.delta_z1[centerIndex]);
 			double du = lim_minmod(delta_u1,delta_u2);
 			double dv = lim_minmod(delta_v1,delta_v2);
 
-			temp.h1r[centerIndex]=input.h[centerIndex]+dh*0.5;
-			temp.h1l[centerIndex]=input.h[centerIndex]-dh*0.5;
-
-			temp.z1r[centerIndex]=input.z[centerIndex]+0.5*(dz_h-dh);
-			temp.z1l[centerIndex]=input.z[centerIndex]+0.5*(dh-dz_h);
-			temp.delzc1[centerIndex] = temp.z1r[centerIndex]-temp.z1l[centerIndex];
-			temp.delz1[leftIndex] = temp.z1l[centerIndex]-temp.z1r[leftIndex];
-
-			if (input.h[centerIndex]>0.){
-				temp.u1r[centerIndex]=input.u[centerIndex]+temp.h1l[centerIndex]*du*0.5/input.h[centerIndex];
-				temp.u1l[centerIndex]=input.u[centerIndex]-temp.h1r[centerIndex]*du*0.5/input.h[centerIndex];
-				temp.v1r[centerIndex]=input.v[centerIndex]+temp.h1l[centerIndex]*dv*0.5/input.h[centerIndex];
-				temp.v1l[centerIndex]=input.v[centerIndex]-temp.h1r[centerIndex]*dv*0.5/input.h[centerIndex];
+		    temp.h1r[centerIndex]= h1r_local;
+			temp.h1l[centerIndex]= h1l_local;
+ 
+            if (h_center > 0.){ // version without blend
+				temp.u1r[centerIndex]=input.u[centerIndex]+h1l_local*du*0.5/h_center;
+				temp.u1l[centerIndex]=input.u[centerIndex]-h1r_local*du*0.5/h_center;
+				temp.v1r[centerIndex]=input.v[centerIndex]+h1l_local*dv*0.5/h_center;
+				temp.v1l[centerIndex]=input.v[centerIndex]-h1r_local*dv*0.5/h_center;
 			}else{
 				temp.u1r[centerIndex]=input.u[centerIndex]+du*0.5;
 				temp.u1l[centerIndex]=input.u[centerIndex]-du*0.5;
 				temp.v1r[centerIndex]=input.v[centerIndex]+dv*0.5;
 				temp.v1l[centerIndex]=input.v[centerIndex]-dv*0.5;
 			} //end if
-
-            //rajout de l'iteration des delta
-            delta_h1 = delta_h2;
-            delta_u1 = delta_u2;
-            delta_v1 = delta_v2;
-		} //end for i
- 
-        index[0] = j;
-        index[1] = NXCELL+1; // i
-        index[2] = patchid;
-        rightIndex = linearizeIndex(3, index, strideinfo);
- 
-        index[0] = j;
-        index[1] = NXCELL; // i
-        index[2] = patchid;
-        centerIndex = linearizeIndex(3, index, strideinfo);
-
-		temp.h1l[rightIndex] = input.h[rightIndex];
-		temp.u1l[rightIndex] = input.u[rightIndex];
-		temp.v1l[rightIndex] = input.v[rightIndex];
-
-		temp.delz1[centerIndex] = temp.z1l[rightIndex]-temp.z1r[centerIndex]; 
-	} //end for j
 	
-    for (int i=1 ; i<NXCELL+1 ; i++){
-        index[0] = 1;
-        index[1] = i; // >= 1
-        index[2] = patchid;
-        centerIndex = linearizeIndex(3, index, strideinfo);
-  
-        index[0] = 0;
-        index[1] = i;
-        index[2] = patchid;
-        bottomIndex = linearizeIndex(3, index, strideinfo);
-	
-        temp.h2r[bottomIndex] = input.h[bottomIndex];
-		temp.u2r[bottomIndex] = input.u[bottomIndex];
-		temp.v2r[bottomIndex] = input.v[bottomIndex];
+        }  // end of j
+  	 
+       index[0] = 0;
+       index[1] = i;
+       index[2] = patchid;
+       centerIndex = linearizeIndex(3, index, strideinfo);
 
-		double delta_h1 = input.h[centerIndex]-input.h[bottomIndex];
-		double delta_u1 = input.u[centerIndex]-input.u[bottomIndex];
-		double delta_v1 = input.v[centerIndex]-input.v[bottomIndex];
-		
-        for (int j=1 ; j<NYCELL+1 ; j++){
 
+        temp.h2r[centerIndex] = input.h[centerIndex];
+		temp.u2r[centerIndex] = input.u[centerIndex];
+		temp.v2r[centerIndex] = input.v[centerIndex];
+ 
+ 
+        for(int j=1 ; j<NYCELL+1 ; j++){
+            // ---- vertical stencil
+ 
             index[0] = j;
             index[1] = i;
             index[2] = patchid;
@@ -828,42 +820,138 @@ void MekkaFlood_solver::rec_muscl(const int patchid, int dim, unsigned int* stri
             index[1] = i;
             index[2] = patchid;
             bottomIndex = linearizeIndex(3, index, strideinfo);
-      
-			double delta_h2 = input.h[topIndex]-input.h[centerIndex];
-			double delta_u2 = input.u[topIndex]-input.u[centerIndex];
-			double delta_v2 = input.v[topIndex]-input.v[centerIndex];
+  
+            double h_center = input.h[centerIndex];
+   	
+            double delta_h1 = h_center-input.h[bottomIndex];
+			double delta_h2 = input.h[topIndex]-h_center;
+	
+            double dh = lim_minmod(delta_h1,delta_h2);
 
-			double dh = lim_minmod(delta_h1,delta_h2);
-			double dz_h = lim_minmod(delta_h1+temp.delta_z2[bottomIndex],delta_h2+temp.delta_z2[centerIndex]);
-			double du = lim_minmod(delta_u1,delta_u2);
+			temp.h2r[centerIndex] = h_center + dh*0.5;
+			temp.h2l[centerIndex] = h_center - dh*0.5;
+ 
+            index[0] = j;
+            index[1] = i;
+            index[2] = patchid;
+            centerIndex = linearizeIndex(3, index, strideinfo);
+      
+            index[0] = j+1;
+            index[1] = i;
+            index[2] = patchid;
+            topIndex = linearizeIndex(3, index, strideinfo);
+  
+            index[0] = j-1;
+            index[1] = i;
+            index[2] = patchid;
+            bottomIndex = linearizeIndex(3, index, strideinfo);
+  
+            h_center = input.h[centerIndex];
+
+		    double delta_u1 = input.u[centerIndex]-input.u[bottomIndex];
+			double delta_u2 = input.u[topIndex]-input.u[centerIndex];
+
+            double delta_v1 = input.v[centerIndex]-input.v[bottomIndex];
+			double delta_v2 = input.v[topIndex]-input.v[centerIndex];
+	
+            double du = lim_minmod(delta_u1,delta_u2);
 			double dv = lim_minmod(delta_v1,delta_v2);
 
-			temp.h2r[centerIndex] = input.h[centerIndex]+dh*0.5;
-			temp.h2l[centerIndex] = input.h[centerIndex]-dh*0.5;
+#if 1
+			if (input.h[centerIndex]>0.){ // version without blend
+				temp.u2r[centerIndex] = input.u[centerIndex]+temp.h2l[centerIndex]*du*0.5/h_center;
+				temp.v2r[centerIndex] = input.v[centerIndex]+temp.h2l[centerIndex]*dv*0.5/h_center;
 
-			temp.z2r[centerIndex] = input.z[centerIndex]+0.5*(dz_h-dh);
-			temp.z2l[centerIndex] = input.z[centerIndex]+0.5*(dh-dz_h);
-			temp.delzc2[centerIndex] = temp.z2r[centerIndex]-temp.z2l[centerIndex];
-			temp.delz2[bottomIndex] = temp.z2l[centerIndex]-temp.z2r[bottomIndex];
-
-			if (input.h[centerIndex]>0.){
-				temp.u2r[centerIndex] = input.u[centerIndex]+temp.h2l[centerIndex]*du*0.5/input.h[centerIndex];
-				temp.u2l[centerIndex] = input.u[centerIndex]-temp.h2r[centerIndex]*du*0.5/input.h[centerIndex];
-				temp.v2r[centerIndex] = input.v[centerIndex]+temp.h2l[centerIndex]*dv*0.5/input.h[centerIndex];
-			    temp.v2l[centerIndex] = input.v[centerIndex]-temp.h2r[centerIndex]*dv*0.5/input.h[centerIndex];
+				temp.u2l[centerIndex] = input.u[centerIndex]-temp.h2r[centerIndex]*du*0.5/h_center;
+			    temp.v2l[centerIndex] = input.v[centerIndex]-temp.h2r[centerIndex]*dv*0.5/h_center;
 			}else{
 				temp.u2r[centerIndex] = input.u[centerIndex]+du*0.5;
-				temp.u2l[centerIndex] = input.u[centerIndex]-du*0.5;
 				temp.v2r[centerIndex] = input.v[centerIndex]+dv*0.5;
+
+				temp.u2l[centerIndex] = input.u[centerIndex]-du*0.5;
 				temp.v2l[centerIndex] = input.v[centerIndex]-dv*0.5;
 			} //end if
-        
-            //rajout de l'iteration des delta
-            delta_h1 = delta_h2;
-            delta_u1 = delta_u2;
-            delta_v1 = delta_v2;
+#else
 
-		} //end for j
+#if defined(SSE41_BLEND)
+            __m128d scaled_du = _mm_setr_pd(du*0.5, du*0.5);
+            __m128d scaled_dv = _mm_setr_pd(dv*0.5, dv*0.5);
+ 
+            __m128d scalar_h_else = _mm_setr_pd(-1.0,1.0);
+            __m128d scalar_h_gt_0 = _mm_setr_pd(-temp.h2r[centerIndex]/input.h[centerIndex], temp.h2l[centerIndex]/input.h[centerIndex]);
+
+            unsigned long long int scalarmask = (input.h[centerIndex]>0.) * (1ULL << 63);
+            __m128d mask = {*(reinterpret_cast<double*>(&scalarmask)), *(reinterpret_cast<double*>(&scalarmask))}; // TODO: does this work correctly?
+
+            __m128d selected_scalar = _mm_blendv_pd(scalar_h_else, scalar_h_gt_0, mask);
+
+            scaled_du = _mm_mul_pd(selected_scalar, scaled_du);
+            scaled_dv = _mm_mul_pd(selected_scalar, scaled_dv);
+
+            __m128d u2 = _mm_setr_pd((input.u[centerIndex]), input.u[centerIndex]);
+            __m128d v2 = _mm_setr_pd((input.v[centerIndex]), input.v[centerIndex]);
+
+            u2 = _mm_add_pd(u2, scaled_du);
+            v2 = _mm_add_pd(v2, scaled_dv);
+
+            temp.u2l[centerIndex] = u2[0];
+            temp.u2r[centerIndex] = u2[1];
+ 
+            temp.v2l[centerIndex] = v2[0];
+            temp.v2r[centerIndex] = v2[1];
+#else
+        
+            double scalar;
+            if (input.h[centerIndex]>0.) { // version with blend (part 1)
+                scalar = temp.h2l[centerIndex]/input.h[centerIndex];
+            } else {
+                scalar = 1.0;
+            }
+
+            temp.u2r[centerIndex]=input.u[centerIndex]+scalar*du*0.5;
+            temp.v2r[centerIndex]=input.v[centerIndex]+scalar*dv*0.5;
+
+            if (input.h[centerIndex]>0.){ // version with blend (part 2)
+                scalar = temp.h2r[centerIndex] / input.h[centerIndex];
+			}else{
+                scalar = 1.0;
+			} //end if
+	
+            temp.u2l[centerIndex]=input.u[centerIndex]-scalar*du*0.5;
+		    temp.v2l[centerIndex]=input.v[centerIndex]-scalar*dv*0.5;
+#endif
+#endif
+        } // end of j
+ 
+        for(int j=1 ; j<NYCELL+1 ; j++){
+            index[0] = j;
+            index[1] = i+1;
+            index[2] = patchid;
+            rightIndex = linearizeIndex(3, index, strideinfo);
+  
+            index[0] = j;
+            index[1] = i-1;
+            index[2] = patchid;
+            leftIndex = linearizeIndex(3, index, strideinfo);
+     
+            index[0] = j;
+            index[1] = i;
+            index[2] = patchid;
+            centerIndex = linearizeIndex(3, index, strideinfo);
+ 
+            double h_center = input.h[centerIndex];
+
+            // duplicated code as a preparation for loop fission
+            double delta_h1 = h_center - input.h[leftIndex]; //delta_h1 = h[1][j]-h[0][j];
+		    double delta_h2 = input.h[rightIndex]- h_center; // delta_h2 = h[i+1][j]-h[i][j];
+            double dh = lim_minmod(delta_h1,delta_h2);
+            double dz_h = lim_minmod(delta_h1+temp.delta_z1[leftIndex],delta_h2+temp.delta_z1[centerIndex]);
+
+			temp.z1r[centerIndex]=input.z[centerIndex]+0.5*(dz_h-dh);
+			temp.z1l[centerIndex]=input.z[centerIndex]+0.5*(dh-dz_h);
+			temp.delzc1[centerIndex] = temp.z1r[centerIndex]-temp.z1l[centerIndex];
+			temp.delz1[leftIndex] = temp.z1l[centerIndex]-temp.z1r[leftIndex];
+        } // end of j
 
         index[0] = NYCELL+1;
         index[1] = i; // >= 1
@@ -878,9 +966,68 @@ void MekkaFlood_solver::rec_muscl(const int patchid, int dim, unsigned int* stri
 		temp.h2l[topIndex] = input.h[topIndex];
 		temp.u2l[topIndex] = input.u[topIndex];
 		temp.v2l[topIndex] = input.v[topIndex];
+	
+        for(int j=1 ; j<NYCELL+1 ; j++){
+            index[0] = j;
+            index[1] = i;
+            index[2] = patchid;
+            centerIndex = linearizeIndex(3, index, strideinfo);
+      
+            index[0] = j+1;
+            index[1] = i;
+            index[2] = patchid;
+            topIndex = linearizeIndex(3, index, strideinfo);
+  
+            index[0] = j-1;
+            index[1] = i;
+            index[2] = patchid;
+            bottomIndex = linearizeIndex(3, index, strideinfo);
+  
+            double h_center = input.h[centerIndex];
+            double delta_h1 = h_center-input.h[bottomIndex];
+			double delta_h2 = input.h[topIndex]-h_center;
+			
+            double dh = lim_minmod(delta_h1,delta_h2);
+            double dz_h = lim_minmod(delta_h1+temp.delta_z2[bottomIndex],delta_h2+temp.delta_z2[centerIndex]);
 
-		temp.delz2[centerIndex] = temp.z2l[topIndex]-temp.z2r[centerIndex];
+			temp.z2r[centerIndex] = input.z[centerIndex]+0.5*(dz_h-dh);
+			temp.z2l[centerIndex] = input.z[centerIndex]+0.5*(dh-dz_h);
+			temp.delzc2[centerIndex] = temp.z2r[centerIndex]-temp.z2l[centerIndex];
+			temp.delz2[bottomIndex] = temp.z2l[centerIndex]-temp.z2r[bottomIndex];
+
+		} //end for j
+
+        index[0] = NYCELL+1;
+        index[1] = i; // >= 1
+        index[2] = patchid;
+        topIndex = linearizeIndex(3, index, strideinfo);
+  
+        index[0] = NYCELL;
+        index[1] = i;
+        index[2] = patchid;
+        centerIndex = linearizeIndex(3, index, strideinfo);
+	
+        temp.delz2[centerIndex] = temp.z2l[topIndex]-temp.z2r[centerIndex];
+
 	} //end for i
+	 
+    for (int j=1; j < NYCELL+1; j++) {  // case for x = NYCELL
+            index[0] = j;
+            index[1] = NXCELL+1; // i
+            index[2] = patchid;
+            rightIndex = linearizeIndex(3, index, strideinfo);
+  
+            index[0] = j;
+            index[1] = NXCELL; // i
+            index[2] = patchid;
+            centerIndex = linearizeIndex(3, index, strideinfo);
+    
+            temp.h1l[rightIndex] = input.h[rightIndex];
+            temp.u1l[rightIndex] = input.u[rightIndex];
+            temp.v1l[rightIndex] = input.v[rightIndex];
+
+            temp.delz1[centerIndex] = temp.z1l[rightIndex]-temp.z1r[centerIndex]; 
+    }
 }
 
 void MekkaFlood_solver::rec_hydro(double hg,double hd,double dz, double& hg_rec, double& hd_rec){
@@ -1272,4 +1419,61 @@ void MekkaFlood_solver::infiltration(const int patchid, int dim, unsigned int* s
   h = hmod_temp;
   Vin_tot  = Vin_temp;
 #endif
-}  
+}
+
+void MekkaFlood_solver::heun(const int patchid, int dim, unsigned int* strideinfo, InputArrays& input, TempArrays& temp, const Constants& constants) {
+    const int NXCELL = constants.NXCELL;
+    const int NYCELL = constants.NYCELL;
+ 
+    unsigned int index[3];
+
+      /*the values of height_Vinf_tot and height_of_tot put to zero
+	to compute infiltrated and overland flow volume*/
+      double height_Vinf_tot=FZERO;  
+      double height_of_tot=FZERO;  
+      //Heun method (order 2 in time)
+      for (int i=1 ; i<NXCELL+1 ; i++){
+        for (int j=1 ; j<NYCELL+1 ; j++){
+            index[0] = j;
+            index[1] = i;
+            index[2] = patchid;
+            unsigned int centerIndex = linearizeIndex(3, index, strideinfo);
+
+              if (temp.hsa[centerIndex]<=constants.HE_CA) {   temp.hsa[centerIndex]=0.;};
+              if (std::abs(temp.usa[centerIndex])<=constants.VE_CA) {   temp.usa[centerIndex]=0.;};
+              if (std::abs(temp.vsa[centerIndex])<=constants.VE_CA) {   temp.vsa[centerIndex]=0.;};
+              double tmp = 0.5*(input.h[centerIndex]+temp.hsa[centerIndex]);
+              if (tmp>=constants.HE_CA){
+                temp.q1[centerIndex] = 0.5*(input.h[centerIndex]*input.u[centerIndex]+temp.hsa[centerIndex]*temp.usa[centerIndex]);
+                input.u[centerIndex] = temp.q1[centerIndex]/tmp;
+                temp.q2[centerIndex] = 0.5*(input.h[centerIndex]*input.v[centerIndex]+temp.hsa[centerIndex]*temp.vsa[centerIndex]);
+                input.v[centerIndex] = temp.q2[centerIndex]/tmp;
+                input.h[centerIndex] = tmp;
+              }else{
+                input.u[centerIndex] = 0.;
+                temp.q1[centerIndex] = 0.;
+                input.v[centerIndex] = 0.;
+                temp.q2[centerIndex] = 0.;
+                input.h[centerIndex] = 0.;
+              }
+             
+          temp.Vin_tot[centerIndex] = (temp.Vin1[centerIndex] + temp.Vin2[centerIndex])*0.5;
+
+          temp.Vin1[centerIndex]=temp.Vin_tot[centerIndex];
+          temp.Vin2[centerIndex]=temp.Vin_tot[centerIndex];
+
+          height_Vinf_tot+= temp.Vin_tot[centerIndex];  
+          height_of_tot+=input.h[centerIndex];
+        } //end for j
+      } //end for i
+
+#if 0
+      /*Computation of the cumulated infiltrated volume*/
+      double Vol_inf_tot_cumul=height_Vinf_tot*DX*DY;
+
+      /*Computation of the overland flow volume*/
+      double Vol_of_tot=height_of_tot*DX*DY;
+
+#endif
+
+}
