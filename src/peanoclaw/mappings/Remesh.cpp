@@ -78,7 +78,8 @@ peanoclaw::mappings::Remesh::Remesh()
   _parallelStatistics(""),
   _totalParallelStatistics("Simulation"),
   _state(),
-  _iterationNumber(0) {
+  _iterationNumber(0),
+  _iterationWatch("", "", false) {
   logTraceIn( "Remesh()" );
 
   _spacetreeCommunicationWaitingTimeWatch.stopTimer();
@@ -110,8 +111,10 @@ peanoclaw::mappings::Remesh::Remesh(const Remesh&  masterThread)
   _initialMinimalMeshWidth(masterThread._initialMinimalMeshWidth),
   _isInitializing(masterThread._isInitializing),
   _useDimensionalSplittingOptimization(masterThread._useDimensionalSplittingOptimization),
-  _parallelStatistics(masterThread._parallelStatistics),
-  _state(masterThread._state)
+  _parallelStatistics(""),
+  _totalParallelStatistics("Simulation"),
+  _state(masterThread._state),
+  _iterationWatch("", "", false)
 {
   logTraceIn( "Remesh(Remesh)" );
   // @todo Insert your code here
@@ -198,9 +201,9 @@ void peanoclaw::mappings::Remesh::destroyHangingVertex(
   //TODO unterweg debug
   #ifdef Parallel
   for(int i = 0; i < TWO_POWER_D; i++) {
-    if(fineGridVertex.getAdjacentCellDescriptionIndex(i) != -1) {
-      Patch subgrid(fineGridVertex.getAdjacentCellDescriptionIndex(i));
-      assertion2(!subgrid.isRemote() || subgrid.getLevel() <= coarseGridVerticesEnumerator.getLevel(), subgrid, fineGridVertex);
+    if(vertex.getAdjacentCellDescriptionIndex(i) != -1) {
+      Patch subgrid(vertex.getAdjacentCellDescriptionIndex(i));
+      assertion2(!subgrid.isRemote() || subgrid.getLevel() <= coarseGridVerticesEnumerator.getLevel(), subgrid, vertex);
     }
   }
   #endif
@@ -375,6 +378,8 @@ void peanoclaw::mappings::Remesh::createCell(
           fineGridPatch,
           true
         );
+        
+        _numerics->update(fineGridPatch);
       }
     }
   }
@@ -687,6 +692,7 @@ bool peanoclaw::mappings::Remesh::prepareSendToWorker(
   }
 
   logTraceOut( "prepareSendToWorker(...)" );
+
   return requiresReduction;
 }
 
@@ -751,11 +757,15 @@ void peanoclaw::mappings::Remesh::mergeWithMaster(
     fineGridVerticesEnumerator.getLevel(),
     false
   );
-
+ 
   communicator.mergeWorkerStateIntoMasterState(workerState, masterState);
 
   if(fineGridCell.isInside()) {
+
+    tarch::timing::Watch masterWorkerSubgridCommunicationWatch("", "", false);
     communicator.receivePatch(fineGridCell.getCellDescriptionIndex());
+    masterWorkerSubgridCommunicationWatch.stopTimer();
+    _parallelStatistics.addWaitingTimeForMasterWorkerSubgridCommunication(masterWorkerSubgridCommunicationWatch.getCalendarTime());
 
     assertionEquals1(
       fineGridCell.getCellDescriptionIndex(),
@@ -913,7 +923,7 @@ void peanoclaw::mappings::Remesh::touchVertexLastTime(
   );
 
   fineGridVertex.increaseAgeInGridIterations();
-
+ 
   logTraceOutWith1Argument( "touchVertexLastTime(...)", fineGridVertex );
 }
 
@@ -977,6 +987,7 @@ void peanoclaw::mappings::Remesh::enterCell(
     assertion1(isRefining, patch);
   }
   #endif
+  
   logTraceOutWith2Arguments( "enterCell(...)", fineGridCell, patch );
 }
 
@@ -1061,8 +1072,8 @@ void peanoclaw::mappings::Remesh::beginIteration(
   peanoclaw::State&  solverState
 ) {
   logTraceInWith1Argument( "beginIteration(State)", solverState );
-  _spacetreeCommunicationWaitingTimeWatch.stopTimer();
 
+  _spacetreeCommunicationWaitingTimeWatch.stopTimer();
   _parallelStatistics = peanoclaw::statistics::ParallelStatistics("Iteration");
   if(_iterationNumber > 0) {
     _parallelStatistics.addWaitingTimeForMasterWorkerSpacetreeCommunication(_spacetreeCommunicationWaitingTimeWatch.getCalendarTime());
@@ -1135,6 +1146,7 @@ void peanoclaw::mappings::Remesh::beginIteration(
 //  }
   #endif
 
+  _iterationWatch.startTimer();
   logTraceOutWith1Argument( "beginIteration(State)", solverState);
 }
 
@@ -1143,6 +1155,11 @@ void peanoclaw::mappings::Remesh::endIteration(
   peanoclaw::State&  solverState
 ) {
   logTraceInWith1Argument( "endIteration(State)", solverState );
+  _iterationWatch.stopTimer();
+  logInfo("logStatistics()", "Waiting time for iteration: "
+      << _iterationWatch.getCalendarTime() << " (total), "
+      << _iterationWatch.getCalendarTime() << " (average) "
+      << 1 << " samples");
 
   delete _gridLevelTransfer;
 
