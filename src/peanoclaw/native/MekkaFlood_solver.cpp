@@ -19,7 +19,7 @@
 // - infiltration: none
 // - friction: none
 
-const int VECTOR_LENGTH = 2;
+const int VECTOR_LENGTH = 16;
 
 static const double FZERO = 0.;
 

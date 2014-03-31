@@ -39,8 +39,8 @@ double peanoclaw::native::FullSWOF2D::initializePatch(
 ) {
   logTraceIn( "initializePatch(...)");
 
-  _scenario.initializePatch(patch);
-  double demandedMeshWidth = _scenario.computeDemandedMeshWidth(patch);
+  double demandedMeshWidth = _scenario.initializePatch(patch);
+  //double demandedMeshWidth = _scenario.computeDemandedMeshWidth(patch);
  
   logTraceOutWith1Argument( "initializePatch(...)", demandedMeshWidth);
   return demandedMeshWidth;

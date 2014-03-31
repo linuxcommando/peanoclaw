@@ -31,7 +31,7 @@ class MekkaFlood_SWEKernelScenario : public peanoclaw::native::SWEKernelScenario
 
         ~MekkaFlood_SWEKernelScenario();
 
-        virtual void initializePatch(peanoclaw::Patch& patch);
+        virtual double initializePatch(peanoclaw::Patch& patch);
         virtual double computeDemandedMeshWidth(peanoclaw::Patch& patch);
         virtual void update(peanoclaw::Patch& patch);
  

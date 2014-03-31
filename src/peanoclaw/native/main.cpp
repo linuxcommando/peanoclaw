@@ -128,8 +128,8 @@ int main(int argc, char **argv) {
 
     // keep aspect ratio of map: 4000 3000: ratio 4:3
     tarch::la::Vector<DIMENSIONS, int> subdivisionFactor;
-    subdivisionFactor(0) = static_cast<int>(96); //  6 * 4, optimum in non optimized version
-    subdivisionFactor(1) = static_cast<int>(54); //  6 * 3, optimum in non optimized version
+    subdivisionFactor(0) = static_cast<int>(96); // 96 //  6 * 4, optimum in non optimized version
+    subdivisionFactor(1) = static_cast<int>(54);  // 54 //  6 * 3, optimum in non optimized version
 
     double min_domainSize = std::min(domainSize(0),domainSize(1));
     double max_domainSize = std::max(domainSize(0),domainSize(1));
@@ -142,7 +142,7 @@ int main(int argc, char **argv) {
     int ghostlayerWidth = 2;
     int unknownsPerSubcell = 6;
 
-    double initialTimestepSize = 5.0;
+    double initialTimestepSize = 0.1;
 
 
 #else
@@ -200,8 +200,8 @@ int main(int argc, char **argv) {
   assertion(runner != 0);
  
   // run experiment
-  double timestep = initialTimestepSize;
-  double endtime = 100.0;
+  double timestep = 1.0;
+  double endtime = 3600.0; // 100.0;
 #if defined(Parallel)
   if (tarch::parallel::Node::getInstance().isGlobalMaster()) {
 #endif
@@ -212,11 +212,11 @@ int main(int argc, char **argv) {
         std::cout << "time " << time << " numberOfCells " << state.getNumberOfInnerCells() << std::endl;
       }
   
-      /*for (int i=0; i < 100; ++i) {
-          runner->runNextPossibleTimestep();
+     /*for (int i=1; i <= 100; ++i) {
+          runner->evolveToTime(i*100.0);
  
           peanoclaw::State& state = runner->getState();
-          std::cout << "numberOfCells " << state.getNumberOfInnerCells() << std::endl;
+          std::cout << "time " << time << " numberOfCells " << state.getNumberOfInnerCells() << std::endl;
       }*/
 
 #if defined(Parallel)
