@@ -208,6 +208,7 @@ void peanoclaw::parallel::MasterWorkerAndForkJoinCommunicator::mergeWorkerStateI
         workerState.getEndMinimumGlobalTimeInterval()
   );
 
+  //std::cout << "minimal timestep: " << workerState.getMinimalTimestep() << std::endl;
   masterState.updateMinimalTimestep(workerState.getMinimalTimestep());
 
   //TODO unterweg debug

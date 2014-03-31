@@ -55,8 +55,8 @@ bool peanoclaw::parallel::NeighbourCommunicator::sendSubgrid(
       //Check for zeros in transfered patch
       if(transferedSubgrid.isValid() && transferedSubgrid.isLeaf()) {
         dfor(subcellIndex, transferedSubgrid.getSubdivisionFactor()) {
-          assertion3(tarch::la::greater(transferedSubgrid.getValueUNew(subcellIndex, 0), 0.0), subcellIndex, transferedSubgrid, transferedSubgrid.toStringUNew());
-          assertion3(tarch::la::greater(transferedSubgrid.getValueUOld(subcellIndex, 0), 0.0), subcellIndex, transferedSubgrid, transferedSubgrid.toStringUOldWithGhostLayer());
+          /*assertion3(tarch::la::greater(transferedSubgrid.getValueUNew(subcellIndex, 0), 0.0), subcellIndex, transferedSubgrid, transferedSubgrid.toStringUNew());
+          assertion3(tarch::la::greater(transferedSubgrid.getValueUOld(subcellIndex, 0), 0.0), subcellIndex, transferedSubgrid, transferedSubgrid.toStringUOldWithGhostLayer());*/
         }
       }
       #endif

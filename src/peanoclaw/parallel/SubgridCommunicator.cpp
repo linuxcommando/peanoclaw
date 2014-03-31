@@ -113,7 +113,7 @@ void peanoclaw::parallel::SubgridCommunicator::sendCellDescription(int cellDescr
   #if defined(Asserts) && defined(Parallel)
   CellDescription& cellDescription = CellDescriptionHeap::getInstance().getData(cellDescriptionIndex).at(0);
   assertion1(!cellDescription.getIsPaddingSubgrid(), cellDescription.toString());
-  assertion1(!cellDescription.getIsRemote(), cellDescription.toString());
+  //assertion1(!cellDescription.getIsRemote(), cellDescription.toString());
   #endif
 
   if(_packCommunication) {
@@ -186,7 +186,7 @@ void peanoclaw::parallel::SubgridCommunicator::sendDataArray(int index) {
 
       std::vector<Data>& localDataVector = DataHeap::getInstance().getData(index);
 
-      assertion1(localDataVector.size() <= 27*27*3+29*29+1, "tooo large");
+      //assertion1(localDataVector.size() <= 27*27*3+29*29+1, "tooo large");
 
       size_t numberOfDataElements = localDataVector.size();
       int dataSize = sizeof(Data::Packed);
@@ -418,7 +418,7 @@ void peanoclaw::parallel::SubgridCommunicator::receiveOverlappedCells(
       //TODO unterweg debug
 //      std::cout << "Setting cell " << (area._offset + subcellIndex) << std::endl;
 
-      assertion3(tarch::la::greater(subgrid.getValueUNew(linearIndex, 0), 0.0), subgrid, subcellIndex, subgrid.getValueUNew(linearIndex, 0));
+      //assertion3(tarch::la::greater(subgrid.getValueUNew(linearIndex, 0), 0.0), subgrid, subcellIndex, subgrid.getValueUNew(linearIndex, 0));
     }
 
     //U old
@@ -428,7 +428,7 @@ void peanoclaw::parallel::SubgridCommunicator::receiveOverlappedCells(
         subgrid.setValueUOldAndResize(linearIndex, unknown, remoteData[entry++].getU());
       }
 
-      assertion3(tarch::la::greater(subgrid.getValueUOld(linearIndex, 0), 0.0), subgrid, subcellIndex, subgrid.getValueUOld(linearIndex, 0));
+      //assertion3(tarch::la::greater(subgrid.getValueUOld(linearIndex, 0), 0.0), subgrid, subcellIndex, subgrid.getValueUOld(linearIndex, 0));
     }
   }
 
