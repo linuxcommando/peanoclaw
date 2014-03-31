@@ -199,6 +199,9 @@ void peanoclaw::mappings::Remesh::destroyHangingVertex(
   );
 
   //TODO unterweg debug
+  //TODO unterweg dissertation: Kein haengender Vertex muss remote-Subgitter als Nachbarn halten. Durch das Verbot,
+  //  dass keine abgewinkelte Verfeinerungsgrenzen durch parallele Grenzen laufen dürfen, muss immer auch über einen
+  //  persistenten Vertex ausgetauscht werden können.
   #ifdef Parallel
   for(int i = 0; i < TWO_POWER_D; i++) {
     if(vertex.getAdjacentCellDescriptionIndex(i) != -1) {
@@ -686,8 +689,8 @@ bool peanoclaw::mappings::Remesh::prepareSendToWorker(
     peanoclaw::parallel::MasterWorkerAndForkJoinCommunicator communicator(worker, fineGridVerticesEnumerator.getCellCenter(), fineGridVerticesEnumerator.getLevel(), false);
     communicator.sendSubgridBetweenMasterAndWorker(subgrid);
 
-    //TODO unterweg dissertation: Subgitter müssen auch auf virtuell geschaltet werden, wenn sie
-    //von einer Ghostlayer überlappt werden und mit einem Worker geshared sind.
+    //TODO unterweg dissertation: Subgitter m��ssen auch auf virtuell geschaltet werden, wenn sie
+    //von einer Ghostlayer ��berlappt werden und mit einem Worker geshared sind.
     requiresReduction = subgrid.isVirtual();
   }
 
