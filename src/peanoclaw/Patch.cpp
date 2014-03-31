@@ -1001,6 +1001,11 @@ int peanoclaw::Patch::getAge() const {
   return _cellDescription->getAgeInGridIterations();
 }
 
+void peanoclaw::Patch::resetAge() const {
+  return _cellDescription->setAgeInGridIterations(0);
+}
+
+
 void peanoclaw::Patch::resetNeighboringGhostlayerBounds() {
   _cellDescription->setRestrictionLowerBounds(
       std::numeric_limits<double>::max());
