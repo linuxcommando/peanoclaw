@@ -424,7 +424,7 @@ static double interpolation_error_gradient(peanoclaw::Patch& patch, int unknown)
     return max_error;
 }
 
-double MekkaFlood_SWEKernelScenario::initializePatch(peanoclaw::Patch& patch) {
+void MekkaFlood_SWEKernelScenario::initializePatch(peanoclaw::Patch& patch) {
     // dam coordinates
     //double x0=domainSize*0.5;
     //double y0=domainSize*0.5;
@@ -503,14 +503,10 @@ double MekkaFlood_SWEKernelScenario::initializePatch(peanoclaw::Patch& patch) {
     //Set bathymetry
     update(patch);
 
-    const tarch::la::Vector<DIMENSIONS, int> subdivisionFactor = patch.getSubdivisionFactor();
-    double min_domainsize = std::min(x_size,y_size);
-    int max_subdivisionFactor = std::max(subdivisionFactor(0),subdivisionFactor(1));
  
-    return min_domainsize / max_subdivisionFactor / 3.0;
 }
 
-double MekkaFlood_SWEKernelScenario::computeDemandedMeshWidth(peanoclaw::Patch& patch) {
+tarch::la::Vector<2, double> MekkaFlood_SWEKernelScenario::computeDemandedMeshWidth(peanoclaw::Patch& patch, bool isInitializing) {
     double retval = 0.0;
 
     const tarch::la::Vector<DIMENSIONS, double> patchPosition = patch.getPosition();
@@ -870,6 +866,15 @@ double MekkaFlood_SWEKernelScenario::computeDemandedMeshWidth(peanoclaw::Patch& 
 #else
     retval = std::min(retval, max_domainsize/(3.0 * max_subdivisionFactor));
 #endif
+
+    if (isInitializing) {
+        //const tarch::la::Vector<DIMENSIONS, int> subdivisionFactor = patch.getSubdivisionFactor();
+        //double min_domainsize = std::min(x_size,y_size);
+        //int max_subdivisionFactor = std::max(subdivisionFactor(0),subdivisionFactor(1));
+        retval = min_domainsize / max_subdivisionFactor / 3.0;
+    } else {
+        retval = retval;
+    }
     return retval;
 
     //TODO unterweg debug

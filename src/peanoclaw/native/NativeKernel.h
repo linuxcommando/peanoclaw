@@ -33,7 +33,7 @@ class peanoclaw::native::NativeKernel : public peanoclaw::Numerics {
     /**
      * @see peanoclaw::Numerics
      */
-    double initializePatch(Patch& patch);
+    void initializePatch(Patch& patch);
 
     /**
      * @see peanoclaw::Numerics
@@ -47,11 +47,17 @@ class peanoclaw::native::NativeKernel : public peanoclaw::Numerics {
     /**
      * @see peanoclaw::Numerics
      */
-    double solveTimestep(
+    void solveTimestep(
       Patch& patch,
       double maximumTimestepSize,
       bool useDimensionalSplitting
     );
+
+    tarch::la::Vector<DIMENSIONS, double> getDemandedMeshWidth(
+        Patch& patch,
+        bool isInitializing
+    );
+
 };
 
 #endif /* PEANOCLAW_NATIVE_NATIVEKERNEL_H_ */

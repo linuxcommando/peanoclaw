@@ -18,6 +18,8 @@
 
 #include <vector>
 
+#define DoNotAssertForPositiveValues
+
 #if !defined(AssertForPositiveValues) && !defined(DoNotAssertForPositiveValues)
 #error "If no assertions for positive values should be used then please define 'DoNotAssertForPositiveValues'"
 #endif

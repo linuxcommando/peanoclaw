@@ -34,19 +34,17 @@ peanoclaw::native::FullSWOF2D::~FullSWOF2D()
 }
 
 
-double peanoclaw::native::FullSWOF2D::initializePatch(
+void peanoclaw::native::FullSWOF2D::initializePatch(
   Patch& patch
 ) {
   logTraceIn( "initializePatch(...)");
 
-  double demandedMeshWidth = _scenario.initializePatch(patch);
-  //double demandedMeshWidth = _scenario.computeDemandedMeshWidth(patch);
+  _scenario.initializePatch(patch);
  
   logTraceOutWith1Argument( "initializePatch(...)", demandedMeshWidth);
-  return demandedMeshWidth;
 }
 
-double peanoclaw::native::FullSWOF2D::solveTimestep(Patch& patch, double maximumTimestepSize, bool useDimensionalSplitting) {
+void peanoclaw::native::FullSWOF2D::solveTimestep(Patch& patch, double maximumTimestepSize, bool useDimensionalSplitting) {
   logTraceInWith2Arguments( "solveTimestep(...)", maximumTimestepSize, useDimensionalSplitting);
 
   assertion2(tarch::la::greater(maximumTimestepSize, 0.0), "Timestepsize == 0 should be checked outside.", patch.getTimeIntervals().getMinimalNeighborTimeConstraint());
@@ -176,9 +174,12 @@ double peanoclaw::native::FullSWOF2D::solveTimestep(Patch& patch, double maximum
 
   logTraceOut( "solveTimestep(...)");
 
-
-  return _scenario.computeDemandedMeshWidth(patch);
 }
+
+tarch::la::Vector<DIMENSIONS, double> peanoclaw::native::FullSWOF2D::getDemandedMeshWidth(Patch& patch, bool isInitializing) {
+  return _scenario.computeDemandedMeshWidth(patch, isInitializing);
+}
+
 
 void peanoclaw::native::FullSWOF2D::addPatchToSolution(Patch& patch) {
 }
@@ -651,7 +652,7 @@ void peanoclaw::native::FullSWOF2D::copySetToPatch(unsigned int *strideinfo, Mek
             index[2] = patchid;
             unsigned int centerIndex = MekkaFlood_solver::linearizeIndex(3, index, strideinfo);
 
-            patch.setParameterWithGhostlayer(subcellIndex, 3, z[centerIndex]);
+            patch.setParameterWithGhostlayer(subcellIndex, 0, z[centerIndex]);
         }
   }
  

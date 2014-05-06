@@ -50,7 +50,7 @@ private:
      *
      * @return The mesh width demanded by the application.
      */
-    virtual double initializePatch(Patch& patch) = 0;
+    virtual void initializePatch(Patch& patch) = 0;
 
     /**
      * Performs the interpolation between the given source and destination
@@ -62,8 +62,9 @@ private:
       const tarch::la::Vector<DIMENSIONS, int>&    destinationOffset,
       const peanoclaw::Patch& source,
       peanoclaw::Patch&        destination,
-      bool interpolateToUOld = true,
-      bool interpolateToCurrentTime = true
+      bool interpolateToUOld, 
+      bool interpolateToCurrentTime,
+      bool useTimeUNewOrTimeUOld
     ) const;
 
     /**
@@ -112,7 +113,7 @@ private:
      * @param maximumTimestepSize The maximal timestep size with regard to the current global timestep.
      *
      */
-    virtual double solveTimestep(
+    virtual void solveTimestep(
       Patch& patch,
       double maximumTimestepSize,
       bool useDimensionalSplitting

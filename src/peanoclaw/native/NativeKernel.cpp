@@ -25,8 +25,7 @@ peanoclaw::native::NativeKernel::NativeKernel()
 void peanoclaw::native::NativeKernel::addPatchToSolution(Patch& patch) {
 }
 
-double peanoclaw::native::NativeKernel::initializePatch(Patch& patch) {
-  return patch.getSubcellSize()(0);
+void peanoclaw::native::NativeKernel::initializePatch(Patch& patch) {
 }
 
 void peanoclaw::native::NativeKernel::fillBoundaryLayer(
@@ -36,10 +35,14 @@ void peanoclaw::native::NativeKernel::fillBoundaryLayer(
 ) {
 }
 
-double peanoclaw::native::NativeKernel::solveTimestep(
+void peanoclaw::native::NativeKernel::solveTimestep(
   Patch& patch,
   double maximumTimestepSize,
   bool useDimensionalSplitting
 ) {
+
+}
+
+tarch::la::Vector<DIMENSIONS, double> peanoclaw::native::NativeKernel::getDemandedMeshWidth(Patch& patch, bool isInitializing) {
   return patch.getSubcellSize()(0);
 }

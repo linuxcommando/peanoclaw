@@ -15,6 +15,8 @@
 
 #include "tarch/logging/Log.h"
 
+#define UseBlockedMeshCommunication
+
 #if !defined(UseBlockedMeshCommunication) && !defined(DoNotUseBlockedMeshCommunication)
 #error "If no blocked mesh communciation should be used then please define 'DoNotUseBlockedMeshCommunication'"
 #endif
