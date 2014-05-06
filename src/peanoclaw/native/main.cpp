@@ -156,8 +156,8 @@ int main(int argc, char **argv) {
     BreakingDam_SWEKernelScenario scenario;
     peanoclaw::Numerics* numerics = numericsFactory.createSWENumerics(scenario);
 
-    int parametersWithoutGhostlayerPerSubcell = 1;
-    int parametersWithGhostlayerPerSubcell = 0;
+    int parametersWithoutGhostlayerPerSubcell = 1; // building data
+    int parametersWithGhostlayerPerSubcell = 1;// bathymetry data
     int ghostlayerWidth = 1;
     int unknownsPerSubcell = 3;
  

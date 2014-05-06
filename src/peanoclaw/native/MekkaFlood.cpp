@@ -891,24 +891,27 @@ tarch::la::Vector<2, double> MekkaFlood_SWEKernelScenario::computeDemandedMeshWi
  
 void MekkaFlood_SWEKernelScenario::update(peanoclaw::Patch& patch) {
 //    // update bathymetry data
-//    //std::cout << "updating bathymetry!" << std::endl;
-//    tarch::la::Vector<DIMENSIONS, int> subcellIndex;
-//    tarch::la::Vector<DIMENSIONS, double> meshPos;
-//    for (int yi = 0; yi < patch.getSubdivisionFactor()(1); yi++) {
-//        for (int xi = 0; xi < patch.getSubdivisionFactor()(0); xi++) {
-//            subcellIndex(0) = xi;
-//            subcellIndex(1) = yi;
-//
-//            meshPos = patch.getSubcellPosition(subcellIndex);
-//            tarch::la::Vector<DIMENSIONS, double> coords = mapMeshToCoordinates(meshPos(0), meshPos(1));
-//            double bathymetry = dem((float)coords(0), (float)coords(1));
-//            double mapvalue = mapMeshToMap(meshPos);
-//
-//            patch.setParameterWithGhostlayer(subcellIndex, 0, bathymetry);
-//            patch.setParameterWithoutGhostlayer(subcellIndex, 0, mapvalue);
-//        }
-//    }
+    //std::cout << "updating bathymetry!" << std::endl;
+    tarch::la::Vector<DIMENSIONS, int> subcellIndex;
+    tarch::la::Vector<DIMENSIONS, double> meshPos;
+    for (int yi = 0; yi < patch.getSubdivisionFactor()(1); yi++) {
+        for (int xi = 0; xi < patch.getSubdivisionFactor()(0); xi++) {
+            subcellIndex(0) = xi;
+            subcellIndex(1) = yi;
 
+            meshPos = patch.getSubcellPosition(subcellIndex);
+            tarch::la::Vector<DIMENSIONS, double> coords = mapMeshToCoordinates(meshPos(0), meshPos(1));
+            double bathymetry = dem((float)coords(0), (float)coords(1));
+            double mapvalue = mapMeshToMap(meshPos);
+
+            patch.setParameterWithGhostlayer(subcellIndex, 0, bathymetry);
+            patch.setParameterWithoutGhostlayer(subcellIndex, 0, mapvalue);
+        }
+    }
+
+    // TODO: the implementation below did not work correctly at the first try - needs further investigation
+    // falling back to the implementation above
+#if 0 
   tarch::la::Vector<DIMENSIONS, int> subcellIndex;
   tarch::la::Vector<DIMENSIONS, double> meshPos;
   for (int yi = -patch.getGhostlayerWidth(); yi < patch.getSubdivisionFactor()(1) + patch.getGhostlayerWidth(); yi++) {
@@ -924,6 +927,7 @@ void MekkaFlood_SWEKernelScenario::update(peanoclaw::Patch& patch) {
       patch.setParameterWithGhostlayer(subcellIndex, 0, bathymetry);
     }
   }
+#endif
 }
 
 // box sizes:
