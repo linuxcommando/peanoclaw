@@ -51,19 +51,9 @@ SWE_WavePropagationBlock_patch::SWE_WavePropagationBlock_patch(peanoclaw::Patch&
         }
     }
  
-    /*for (int x = 0; x < subdivisionFactor(0); x++) {
-        for (int y = 0; y < subdivisionFactor(1); y++) {
-            subcellIndex(0) = x;
-            subcellIndex(1) = y;
-            SWE_Block::b[x+1][y+1] = _patch.getValueAux(subcellIndex, 0);
-        }
-    }*/
-
     for (int x = -1; x < subdivisionFactor(0)+1; x++) {
         for (int y = -1; y < subdivisionFactor(1)+1; y++) {
-            subcellIndex(0) = x;
-            subcellIndex(1) = y;
-            SWE_Block::b[x+1][y+1] = _patch.getValueUOld(subcellIndex, 3);
+          SWE_Block::b[x+1][y+1] = 0.0;
         }
     }
 }

@@ -287,8 +287,9 @@ void peanoclaw::statistics::SubgridStatistics::finalizeIteration(peanoclaw::Stat
 
   _isFinalized = true;
 
- // TODO: ROLAND: workaround - this crashes, probably because the respective cell was already destroyed in Remesh
-  //logStatistics();
+#if !defined(SharedTBB)
+  logStatistics();
+#endif
 }
 
 void peanoclaw::statistics::SubgridStatistics::logLevelStatistics(std::string description) {

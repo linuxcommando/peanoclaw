@@ -77,9 +77,9 @@ void peanoclaw::runners::PeanoClawLibraryRunner::initializeParallelEnvironment()
   #endif
 
   //Shared Memory
-  #ifdef SharedMemoryParallelisation
+  #ifdef SharedTBB
   std::cout << "configuring multicore" << std::endl;
-  tarch::multicore::tbb::Core::getInstance().configure(8);
+  tarch::multicore::Core::getInstance().configure(8);
   peano::datatraversal::autotuning::Oracle::getInstance().setOracle( new peano::datatraversal::autotuning::OracleForOnePhaseDummy(
     true, // multithreading
     false,
@@ -169,7 +169,8 @@ peanoclaw::runners::PeanoClawLibraryRunner::PeanoClawLibraryRunner(
   const tarch::la::Vector<DIMENSIONS, int>& subdivisionFactor,
   int defaultGhostLayerWidth,
   int unknownsPerSubcell,
-  int auxiliarFieldsPerSubcell,
+  int parameterWithoutGhostlayerPerSubcell,
+  int parameterWithGhostlayerPerSubcell,
   double initialTimestepSize,
   bool useDimensionalSplittingOptimization,
   bool reduceReductions,
@@ -219,7 +220,8 @@ peanoclaw::runners::PeanoClawLibraryRunner::PeanoClawLibraryRunner(
   state.setDefaultSubdivisionFactor(subdivisionFactor);
   state.setDefaultGhostLayerWidth(defaultGhostLayerWidth);
   state.setUnknownsPerSubcell(unknownsPerSubcell);
-  state.setAuxiliarFieldsPerSubcell(auxiliarFieldsPerSubcell);
+  state.setNumberOfParametersWithoutGhostlayerPerSubcell(parameterWithoutGhostlayerPerSubcell);
+  state.setNumberOfParametersWithGhostlayerPerSubcell(parameterWithGhostlayerPerSubcell);
   state.setNumerics(numerics);
   state.setInitialTimestepSize(initialTimestepSize);
   state.setDomain(domainOffset, domainSize);

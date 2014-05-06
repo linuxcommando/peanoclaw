@@ -4,7 +4,7 @@
 BreakingDam_SWEKernelScenario::BreakingDam_SWEKernelScenario() {}
 BreakingDam_SWEKernelScenario::~BreakingDam_SWEKernelScenario() {}
 
-double BreakingDam_SWEKernelScenario::initializePatch(peanoclaw::Patch& patch) {
+void BreakingDam_SWEKernelScenario::initializePatch(peanoclaw::Patch& patch) {
     // dam coordinates
     double x0=10/3.0;
     double y0=10/3.0;
@@ -19,7 +19,6 @@ double BreakingDam_SWEKernelScenario::initializePatch(peanoclaw::Patch& patch) {
     double vr = 0.;
     
     // compute from mesh data
-    const tarch::la::Vector<DIMENSIONS, double> patchSize = patch.getSize();
     const tarch::la::Vector<DIMENSIONS, double> patchPosition = patch.getPosition();
     const tarch::la::Vector<DIMENSIONS, double> meshWidth = patch.getSubcellSize();
 
@@ -36,17 +35,18 @@ double BreakingDam_SWEKernelScenario::initializePatch(peanoclaw::Patch& patch) {
             double q0 = hl*(r<=radDam) + hr*(r>radDam);
             double q1 = hl*ul*(r<=radDam) + hr*ur*(r>radDam);
             double q2 = hl*vl*(r<=radDam) + hr*vr*(r>radDam);
-  
+
             patch.setValueUNew(subcellIndex, 0, q0);
             patch.setValueUNew(subcellIndex, 1, q1);
             patch.setValueUNew(subcellIndex, 2, q2);
         }
     }
-
-    return 10.0/9/3;
 }
 
-double BreakingDam_SWEKernelScenario::computeDemandedMeshWidth(peanoclaw::Patch& patch) {
+tarch::la::Vector<DIMENSIONS,double> BreakingDam_SWEKernelScenario::computeDemandedMeshWidth(
+  peanoclaw::Patch& patch,
+  bool isInitializing
+) {
     double max_gradient = 0.0;
     const tarch::la::Vector<DIMENSIONS, double> meshWidth = patch.getSubcellSize();
     
@@ -72,17 +72,21 @@ double BreakingDam_SWEKernelScenario::computeDemandedMeshWidth(peanoclaw::Patch&
         }
     }
   
-    double demandedMeshWidth = patch.getSubcellSize()(0);
+    tarch::la::Vector<DIMENSIONS,double> demandedMeshWidth;
     if (max_gradient > 0.1) {
         //demandedMeshWidth = 1.0/243;
-        demandedMeshWidth = 10.0/9/27;
+        demandedMeshWidth = tarch::la::Vector<DIMENSIONS,double>(10.0/6/27);
     } else if (max_gradient < 0.5) {
         //demandedMeshWidth = 10.0/130/27;
-        demandedMeshWidth = 10.0/9/27;
+        demandedMeshWidth = tarch::la::Vector<DIMENSIONS,double>(10.0/6/9);
     } else {
-      demandedMeshWidth = patch.getSubcellSize()(0);
+      demandedMeshWidth = patch.getSubcellSize();
     }
 
-    return demandedMeshWidth;
+    if(isInitializing) {
+      return 10.0/6/9;
+    } else {
+      return demandedMeshWidth;
+    }
 }
 #endif

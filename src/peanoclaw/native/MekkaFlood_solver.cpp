@@ -7,7 +7,7 @@
 #include <cmath>
 #include <cstring>
 
-#include "MekkaFlood_solver.h"
+#include "peanoclaw/native/MekkaFlood_solver.h"
 
 //#define DEBUG
 
@@ -19,9 +19,9 @@
 // - infiltration: none
 // - friction: none
 
-const int VECTOR_LENGTH = 16;
+const int VECTOR_LENGTH = 4;
 
-static const double FZERO = 0.;
+static const double FZERO = 0;
 
 MekkaFlood_solver::MekkaFlood_solver()
 {
@@ -38,7 +38,7 @@ void MekkaFlood_solver::initializeStrideinfo(const Constants& constants, int dim
     int ny_ghost = constants.NYCELL + 2;
 
     strideinfo[0] = 1;
-    strideinfo[1] = ny_ghost; //static_cast<int>(std::ceil(static_cast<double>(ny_ghost) / static_cast<double>(VECTOR_LENGTH)) * VECTOR_LENGTH); // align in to a multiple of 4 (double) elements
+    strideinfo[1] = static_cast<int>(std::ceil(static_cast<double>(ny_ghost) / static_cast<double>(VECTOR_LENGTH)) * VECTOR_LENGTH); // align in to a multiple of 4 (double) elements
     strideinfo[2] = strideinfo[1] * nx_ghost;
 
     //std::cout << "strideinfo " << strideinfo[0] << " " << strideinfo[1] << " " << strideinfo[2] << " nx " << nx_ghost << " ny " << ny_ghost << std::endl;

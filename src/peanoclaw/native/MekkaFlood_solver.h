@@ -6,7 +6,6 @@
 #include <limits> 
 
 class MekkaFlood_solver {
-
     protected:
         // this structs are not allocated and serve just as links to temp data
         struct SchemeArrays {

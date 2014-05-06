@@ -101,7 +101,7 @@ void peanoclaw::mappings::SolveTimestep::fillBoundaryLayers(
 }
 
 
-peanoclaw::mappings::SolveTimestep::SolveTimestep() {
+peanoclaw::mappings::SolveTimestep::SolveTimestep() : _workerIterations(-1) {
   logTraceIn( "SolveTimestep()" );
   // @todo Insert your code here
   logTraceOut( "SolveTimestep()" );
@@ -255,8 +255,7 @@ void peanoclaw::mappings::SolveTimestep::destroyCell(
   //peanoclaw::statistics::LevelInformation& levelInformation = _levelStatistics.at(fineGridVerticesEnumerator.getLevel()-1);
   //levelInformation._destroyedPatches++;
 
-// TODO: ROLAND: workaround - this crashes, probably because the respective cell was already destroyed in Remesh
-  //_subgridStatistics.destroyedSubgrid(fineGridCell.getCellDescriptionIndex());
+  _subgridStatistics.destroyedSubgrid(fineGridCell.getCellDescriptionIndex());
 
   logTraceOutWith1Argument( "destroyCell(...)", fineGridCell );
 }
@@ -333,7 +332,13 @@ void peanoclaw::mappings::SolveTimestep::mergeWithRemoteDataDueToForkOrJoin(
   int                                       level
 ) {
   logTraceInWith3Arguments( "mergeWithRemoteDataDueToForkOrJoin(...)", localCell, masterOrWorkerCell, fromRank );
-  // @todo Insert your code here
+
+  bool isForking = !tarch::parallel::Node::getInstance().isGlobalMaster()
+                   && fromRank == tarch::parallel::NodePool::getInstance().getMasterRank();
+  if(isForking) {
+    _workerIterations = 0;
+  }
+
   logTraceOut( "mergeWithRemoteDataDueToForkOrJoin(...)" );
 }
 
@@ -513,7 +518,7 @@ void peanoclaw::mappings::SolveTimestep::touchVertexFirstTime(
       fineGridVertex.shouldErase()
       && fineGridVertex.getRefinementControl() == peanoclaw::Vertex::Records::Refined
 //      && fineGridVertex.getCurrentAdjacentCellsHeight() == 1
-  ) {
+    ) {
     //TODO unterweg debug
 //    logInfo("", "Erasing vertex at " << fineGridX << " on level " << (coarseGridVerticesEnumerator.getLevel()+1)
 //      #ifdef Parallel
@@ -575,7 +580,7 @@ void peanoclaw::mappings::SolveTimestep::enterCell(
 
       #ifdef Parallel
       ParallelSubgrid parallelSubgrid(fineGridCell.getCellDescriptionIndex());
-      parallelSubgrid.markCurrentStateAsSent(true);
+      parallelSubgrid.markCurrentStateAsSentIfAppropriate();
       #endif
 
       //Perform timestep
@@ -587,6 +592,7 @@ void peanoclaw::mappings::SolveTimestep::enterCell(
         coarseGridVertices,
         coarseGridVerticesEnumerator
       )) {
+
         // Copy uNew to uOld
         patch.copyUNewToUOld();
 
@@ -598,12 +604,14 @@ void peanoclaw::mappings::SolveTimestep::enterCell(
         );
 
         // Do one timestep...
-        double requiredMeshWidth = _numerics->solveTimestep(
-                                                patch,
-                                                maximumTimestepDueToGlobalTimestep,
-                                                _useDimensionalSplittingOptimization
-                                              );
+        _numerics->solveTimestep(
+          patch,
+          maximumTimestepDueToGlobalTimestep,
+          _useDimensionalSplittingOptimization
+        );
+        tarch::la::Vector<DIMENSIONS, double> requiredMeshWidth = _numerics->getDemandedMeshWidth(patch, false);
         patch.setDemandedMeshWidth(requiredMeshWidth);
+
         #ifdef Parallel
         ParallelSubgrid parallelSubgrid(fineGridCell.getCellDescriptionIndex());
         parallelSubgrid.markCurrentStateAsSent(false);
@@ -700,11 +708,13 @@ void peanoclaw::mappings::SolveTimestep::enterCell(
     //TODO unterweg debug
     assertion1(!tarch::la::smaller(patch.getTimeIntervals().getTimestepSize(), 0.0) || !patch.isLeaf(), patch);
 
-    if (patch.getAge() >= 2) {
+  #ifdef Parallel
+//    if (patch.getAge() >= 2) {
         fineGridCell.setCellIsAForkCandidate(true);
-    } else {
-        fineGridCell.setCellIsAForkCandidate(false);
-    }
+//    } else {
+//        fineGridCell.setCellIsAForkCandidate(false);
+//    }
+  #endif
   }
 }
 
@@ -722,7 +732,7 @@ void peanoclaw::mappings::SolveTimestep::leaveCell(
   Patch patch(fineGridCell);
 
   //Refinement criterion
-  assertion1(tarch::la::greater(patch.getDemandedMeshWidth(), 0), patch);
+  assertion1(tarch::la::allGreater(patch.getDemandedMeshWidth(), tarch::la::Vector<DIMENSIONS,double>(0)), patch);
 
   if(tarch::la::oneGreater(patch.getSubcellSize(), tarch::la::Vector<DIMENSIONS, double>(patch.getDemandedMeshWidth()))) {
     // Refine
@@ -740,6 +750,16 @@ void peanoclaw::mappings::SolveTimestep::leaveCell(
       if(fineGridVertices[fineGridVerticesEnumerator(i)].isHangingNode()
           && !coarseGridVertices[coarseGridVerticesEnumerator(i)].isHangingNode()) {
         coarseGridVertices[coarseGridVerticesEnumerator(i)].setShouldRefine(true);
+      }
+    }
+  }
+
+  //TODO unterweg dissertation
+  //Delay oscillations to allow timestepping to proceed
+  if(patch.getAge() < 5) {
+    for(int i = 0; i < TWO_POWER_D; i++) {
+      if(!fineGridVertices[fineGridVerticesEnumerator(i)].isHangingNode()) {
+        coarseGridVertices[coarseGridVerticesEnumerator(i)].setSubcellEraseVeto(i);
       }
     }
   }
@@ -766,6 +786,8 @@ void peanoclaw::mappings::SolveTimestep::beginIteration(
   peanoclaw::State&  solverState
 ) {
   logTraceInWith1Argument( "beginIteration(State)", solverState );
+
+  _workerIterations++;
 
   if(!tarch::la::equals(_globalTimestepEndTime, solverState.getGlobalTimestepEndTime())) {
     _globalTimestepEndTime = solverState.getGlobalTimestepEndTime();

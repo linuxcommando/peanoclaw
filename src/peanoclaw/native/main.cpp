@@ -64,8 +64,10 @@ int main(int argc, char **argv) {
 
   //Validation
   tarch::logging::CommandLineLogger::getInstance().addFilterListEntry( ::tarch::logging::CommandLineLogger::FilterListEntry( "info", -1, "peanoclaw::statistics::ParallelGridValidator", true ) );
+  tarch::logging::CommandLineLogger::getInstance().addFilterListEntry( ::tarch::logging::CommandLineLogger::FilterListEntry( "info", -1, "peanoclaw::mappings::ValidateGrid", true ) );
 
   //Selective Tracing
+  tarch::logging::CommandLineLogger::getInstance().addFilterListEntry( ::tarch::logging::CommandLineLogger::FilterListEntry( "info", -1, "tarch::mpianalysis", false ) );
 //  tarch::logging::CommandLineLogger::getInstance().addFilterListEntry( ::tarch::logging::CommandLineLogger::FilterListEntry( "debug", -1, "peanoclaw::mappings::Remesh", false ) );
 //  tarch::logging::CommandLineLogger::getInstance().addFilterListEntry( ::tarch::logging::CommandLineLogger::FilterListEntry( "debug", -1, "peanoclaw::mappings::Remesh::destroyVertex", false ) );
 //  tarch::logging::CommandLineLogger::getInstance().addFilterListEntry( ::tarch::logging::CommandLineLogger::FilterListEntry( "debug", -1, "peanoclaw::mappings::Remesh::endIteration", false ) );
@@ -103,6 +105,11 @@ int main(int argc, char **argv) {
  
     tarch::la::Vector<DIMENSIONS, double> domainOffset;
 
+    int parametersWithoutGhostlayerPerSubcell = 1;
+    int parametersWithGhostlayerPerSubcell = 1;
+    int ghostlayerWidth = 2;
+    int unknownsPerSubcell = 6;
+
     // TODO: aaarg Y U NO PLOT CORRECTLY! -> work around established
     //domainOffset(0) = dem.lower_left(0);
     //domainOffset(1) = dem.lower_left(1);
@@ -118,6 +125,9 @@ int main(int argc, char **argv) {
  
     double x_size = (upper_right_0 - lower_left_0)/scenario.scale;
     double y_size = (upper_right_1 - lower_left_1)/scenario.scale;
+
+    double timestep = 2.0; //0.1;//1.0;
+    double endtime = 3600.0; // 100.0;
  
     // TODO: make central scale parameter in MekkaFlood class
     // currently we have to change here, meshToCoordinates and initializePatch and computeMeshWidth
@@ -128,8 +138,8 @@ int main(int argc, char **argv) {
 
     // keep aspect ratio of map: 4000 3000: ratio 4:3
     tarch::la::Vector<DIMENSIONS, int> subdivisionFactor;
-    subdivisionFactor(0) = static_cast<int>(96); // 96 //  6 * 4, optimum in non optimized version
-    subdivisionFactor(1) = static_cast<int>(54);  // 54 //  6 * 3, optimum in non optimized version
+    subdivisionFactor(0) = static_cast<int>(16); // 96 //  6 * 4, optimum in non optimized version
+    subdivisionFactor(1) = static_cast<int>(9);  // 54 //  6 * 3, optimum in non optimized version
 
     double min_domainSize = std::min(domainSize(0),domainSize(1));
     double max_domainSize = std::max(domainSize(0),domainSize(1));
@@ -139,33 +149,30 @@ int main(int argc, char **argv) {
 
     tarch::la::Vector<DIMENSIONS, double> initialMinimalMeshWidth(min_domainSize/(3.0 * max_subdivisionFactor));
 
-    int ghostlayerWidth = 2;
-    int unknownsPerSubcell = 6;
-
-    double initialTimestepSize = 0.1;
+    double initialTimestepSize = 1.0;
 
 
 #else
     BreakingDam_SWEKernelScenario scenario;
     peanoclaw::Numerics* numerics = numericsFactory.createSWENumerics(scenario);
- 
-    tarch::la::Vector<DIMENSIONS, double> domainOffset(0);
-    tarch::la::Vector<DIMENSIONS, double> domainSize(1.0);
-    tarch::la::Vector<DIMENSIONS, double> initialMinimalMeshWidth(domainSize(0)/6/27);
 
+    int parametersWithoutGhostlayerPerSubcell = 1;
+    int parametersWithGhostlayerPerSubcell = 0;
     int ghostlayerWidth = 1;
     int unknownsPerSubcell = 3;
+ 
+    tarch::la::Vector<DIMENSIONS, double> domainOffset(0);
+    tarch::la::Vector<DIMENSIONS, double> domainSize(10.0);
+    tarch::la::Vector<DIMENSIONS, double> initialMinimalMeshWidth(domainSize/6.0/9.0);
 
+    double timestep = 0.1;
+    double endtime = 0.5; // 100.0;
     int initialTimestepSize = 0.5;
  
     tarch::la::Vector<DIMENSIONS, int> subdivisionFactor(6);
 #endif
   
-  //tarch::la::Vector<DIMENSIONS, double> initialMinimalMeshWidth(10.0/130/27);
-  //tarch::la::Vector<DIMENSIONS, int> subdivisionFactor(130);
-  int auxiliarFieldsPerSubcell = 1;
   bool useDimensionalSplittingOptimization = true;
- 
 
   //Check parameters
   assertion1(tarch::la::greater(domainSize(0), 0.0) && tarch::la::greater(domainSize(1), 0.0), domainSize);
@@ -187,7 +194,8 @@ int main(int argc, char **argv) {
     subdivisionFactor,
     ghostlayerWidth,
     unknownsPerSubcell,
-    auxiliarFieldsPerSubcell,
+    parametersWithoutGhostlayerPerSubcell,
+    parametersWithGhostlayerPerSubcell,
     initialTimestepSize,
     useDimensionalSplittingOptimization,
     1
@@ -200,8 +208,6 @@ int main(int argc, char **argv) {
   assertion(runner != 0);
  
   // run experiment
-  double timestep = 1.0;
-  double endtime = 3600.0; // 100.0;
 #if defined(Parallel)
   if (tarch::parallel::Node::getInstance().isGlobalMaster()) {
 #endif
