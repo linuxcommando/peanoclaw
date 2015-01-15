@@ -26,17 +26,18 @@ peanoclaw::native::scenarios::SWEScenario* peanoclaw::native::scenarios::SWEScen
 
   if(argc == 1) {
   #ifdef PEANOCLAW_FULLSWOF2D
-    DEM dem;
-
-    dem.load("DEM_400cm.bin");
-
     // keep aspect ratio of map: 4000 3000: ratio 4:3
     tarch::la::Vector<DIMENSIONS, int> subdivisionFactor;
     subdivisionFactor(0) = static_cast<int>(16); // 96 //  6 * 4, optimum in non optimized version
     subdivisionFactor(1) = static_cast<int>(9);  // 54 //  6 * 3, optimum in non optimized version
 
-    tarch::la::Vector<DIMENSIONS, double> maximalMeshWidth(1.0/(9.0 * subdivisionFactor(0)));
-    tarch::la::Vector<DIMENSIONS, double> minimalMeshWidth(1.0/(81.0 * subdivisionFactor(0)));
+    tarch::la::Vector<DIMENSIONS, double> maximalMeshWidth;
+    maximalMeshWidth[0] = (8000.0/(1.0*subdivisionFactor(0)));
+    maximalMeshWidth[1] = (4500.0/(1.0*subdivisionFactor(1)));
+ 
+    tarch::la::Vector<DIMENSIONS, double> minimalMeshWidth;
+    minimalMeshWidth[0] = (8000.0/(3.0*subdivisionFactor(0)));
+    minimalMeshWidth[1] = (4500.0/(3.0*subdivisionFactor(1)));
 
     double globalTimestepSize = 2.0; //0.1;//1.0;
     double endTime = 3600.0; // 100.0;
@@ -45,7 +46,6 @@ peanoclaw::native::scenarios::SWEScenario* peanoclaw::native::scenarios::SWEScen
 
     peanoclaw::native::scenarios::MekkaFloodSWEScenario* scenario
       = new peanoclaw::native::scenarios::MekkaFloodSWEScenario(
-            dem,
             subdivisionFactor,
             minimalMeshWidth,
             maximalMeshWidth,

@@ -50,7 +50,7 @@ private:
   /**
    * Map from vertex positions to vertex indices
    */
-  std::map<tarch::la::Vector<DIMENSIONS,double> , int, tarch::la::VectorCompare<DIMENSIONS> >   _vertex2IndexMap;
+  std::map<tarch::la::Vector<DIMENSIONS,double> , size_t, tarch::la::VectorCompare<DIMENSIONS> >   _vertex2IndexMap;
   /**
    * Plotter for vertices
    */

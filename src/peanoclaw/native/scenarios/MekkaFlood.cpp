@@ -5,6 +5,7 @@
 #include <png.h>
 
 #include "peanoclaw/native/scenarios/MekkaFlood.h"
+#include "gsl/gsl_interp.h"
 
 //#define BREAKINGDAMTEST
 
@@ -16,7 +17,6 @@
 }*/
 
 peanoclaw::native::scenarios::MekkaFloodSWEScenario::MekkaFloodSWEScenario(
-    DEM& dem,
     const tarch::la::Vector<DIMENSIONS,int>&    subdivisionFactor,
     const tarch::la::Vector<DIMENSIONS,double>& minimalMeshWidth,
     const tarch::la::Vector<DIMENSIONS,double>& maximalMeshWidth,
@@ -26,9 +26,10 @@ peanoclaw::native::scenarios::MekkaFloodSWEScenario::MekkaFloodSWEScenario(
     _minialMeshWidth(minimalMeshWidth),
     _maximalMeshWidth(maximalMeshWidth),
     _globalTimestepSize(globalTimestepSize),
-    _endTime(endTime),
-    dem(dem)
+    _endTime(endTime)
 {
+
+    dem.load("DEM_100cm.bin");
  
     scale = 2.0;
 
@@ -75,8 +76,9 @@ peanoclaw::native::scenarios::MekkaFloodSWEScenario::MekkaFloodSWEScenario(
     double lower_left_0 = dem.lower_left(0);
     double lower_left_1 = dem.lower_left(1);
 
-    double x_size = (upper_right_0 - lower_left_0)/scale;
-    double y_size = (upper_right_1 - lower_left_1)/scale;
+    // we have to divide because otherwise Peano gets stuck
+    double x_size = (upper_right_0 - lower_left_0) / scale;
+    double y_size = (upper_right_1 - lower_left_1) / scale;
 
     // TODO: make central scale parameter in MekkaFlood class
     // currently we have to change here, meshToCoordinates and initializePatch and computeMeshWidth
@@ -424,72 +426,115 @@ static double interpolation_error_gradient(peanoclaw::Patch& patch, int unknown)
 }
 
 void peanoclaw::native::scenarios::MekkaFloodSWEScenario::initializePatch(peanoclaw::Patch& patch) {
-    // dam coordinates
-    //double x0=_domainSize*0.5;
-    //double y0=_domainSize*0.5;
-  
-  //TODO unterweg debug
-    double x_size = (dem.upper_right(0) - dem.lower_left(0));// / scale;
-    double y_size = (dem.upper_right(1) - dem.lower_left(1));//  / scale;
-    _domainSize(0) = x_size;
-    _domainSize(1) = y_size;
-    _domainOffset = tarch::la::Vector<DIMENSIONS, double>(0);
-
-    double x0=(x_size) * 0.5;
-    double y0=(y_size) * 0.5;
-    
-    // Riemann states of the dam break problem
-    double radDam = 0.05*std::min(x_size,y_size);
-#if defined(BREAKINGDAMTEST)
-    double hl = 2.;
-#else
-    double hl = 0.0;
-#endif
-    double ul = 0.;
-    double vl = 0.;
-    double hr = 0.; // 1
-    double ur = 0.;
-    double vr = 0.;
-
-//    double q0 = 0;
-//    double q1 = 0;
-    
     // compute from mesh data
 //    const tarch::la::Vector<DIMENSIONS, double> patchSize = patch.getSize();
 //    const tarch::la::Vector<DIMENSIONS, double> patchPosition = patch.getPosition();
 //    const tarch::la::Vector<DIMENSIONS, double> meshWidth = patch.getSubcellSize();
  
+    const tarch::la::Vector<DIMENSIONS, double> tree_position = patch.getPosition();
+    const tarch::la::Vector<DIMENSIONS, double> patchSize = patch.getSize();
+
+    ssize_t domain_pixelspace_offset[2] = {round(tree_position[0]*scale),round(tree_position[1]*scale)};
+  
+    const tarch::la::Vector<DIMENSIONS, int> subdivisionFactor = patch.getSubdivisionFactor();
+    ssize_t patch_cells[2];
+    patch_cells[0] = subdivisionFactor[0];
+    patch_cells[1] = subdivisionFactor[1];
+
+    ssize_t patch_vertices[2];
+    patch_vertices[0] = patch_cells[0]+1;
+    patch_vertices[1] = patch_cells[1]+1;
+
+    double local_pixelspace_size[2];
+    local_pixelspace_size[0] = (patchSize[0]*scale) / (patch_vertices[0]-1);
+    local_pixelspace_size[1] = (patchSize[1]*scale) / (patch_vertices[1]-1);
+
+
     // initialize new part only
     tarch::la::Vector<DIMENSIONS, int> subcellIndex;
     tarch::la::Vector<DIMENSIONS, double> meshPos;
     for (int yi = 0; yi < patch.getSubdivisionFactor()(1); yi++) {
         for (int xi = 0; xi < patch.getSubdivisionFactor()(0); xi++) {
+            // evaluate cell centers
+            ssize_t position[2] = {xi, yi};
+ 
+            int pixelspace_x[2];
+            int pixelspace_y[2];
+
+            pixelspace_x[0] = domain_pixelspace_offset[0] + round(local_pixelspace_size[0] * position[0]);
+            pixelspace_x[1] = domain_pixelspace_offset[0] + round(local_pixelspace_size[0] * (position[0]+1));
+            pixelspace_y[0] = domain_pixelspace_offset[1] + round(local_pixelspace_size[1] * position[1]);
+            pixelspace_y[1] = domain_pixelspace_offset[1] + round(local_pixelspace_size[1] * (position[1]+1));
+
+            // cell corners
+            float dem_height_x0y0 = dem(pixelspace_x[0], pixelspace_y[0]);
+            float dem_height_x1y0 = dem(pixelspace_x[1], pixelspace_y[0]);
+            float dem_height_x0y1 = dem(pixelspace_x[0], pixelspace_y[1]);
+            float dem_height_x1y1 = dem(pixelspace_x[1], pixelspace_y[1]);
+
+#if !defined(NDEBUG)
+            std::cout << "position: " << position[0] << " " << position[1] 
+                      << " pixelspace x range: " << pixelspace_x[0] << " - " << pixelspace_x[1]-1
+                      << " pixelspace y range: " << pixelspace_y[0] << " - " << pixelspace_y[1]-1
+                      << " worldspace x range: " << pixelspace_x[0] * dem.scale(0) << " - " << (pixelspace_x[1]-1) * dem.scale(0)
+                      << " worldspace y range: " << pixelspace_y[0] * dem.scale(1) << " - " << (pixelspace_y[1]-1) * dem.scale(1)
+                      << " heights: " << dem_height_x0y0 << " " << dem_height_x1y0
+                      << " " << dem_height_x0y1 << " " << dem_height_x1y1
+                      << std::endl;
+#endif
+
+            double worldspace_x[2];
+            double worldspace_y[2];
+
+            worldspace_x[0] = pixelspace_x[0] * dem.scale(0);
+            worldspace_x[1] = pixelspace_x[1] * dem.scale(0);
+            worldspace_y[0] = pixelspace_y[0] * dem.scale(1);
+            worldspace_y[1] = pixelspace_y[1] * dem.scale(1);
+
+            double lower_heights[2] = {dem_height_x0y0, dem_height_x1y0};
+            double upper_heights[2] = {dem_height_x0y1, dem_height_x1y1};
+
+            // setup interpolation using cell corners
+            gsl_interp *interp_lower = gsl_interp_alloc(gsl_interp_linear,2);
+            gsl_interp_accel *allocp_lower = gsl_interp_accel_alloc();
+
+            gsl_interp *interp_upper = gsl_interp_alloc(gsl_interp_linear,2);
+            gsl_interp_accel *allocp_upper = gsl_interp_accel_alloc();
+
+            gsl_interp_init(interp_lower, worldspace_x, lower_heights, 2);
+            gsl_interp_init(interp_upper, worldspace_x, upper_heights, 2);
+
+            gsl_interp *interp_temp = gsl_interp_alloc(gsl_interp_linear,2);
+            gsl_interp_accel *allocp_temp = gsl_interp_accel_alloc();
+
+
+            ssize_t dem_vertices[2];
+            dem_vertices[0] = pixelspace_x[1] - pixelspace_x[0];
+            dem_vertices[1] = pixelspace_y[1] - pixelspace_y[0];
+
+            // interpolate on cell center going from lower left corner of cell
+            int test_pixelspace_x = pixelspace_x[0];
+            int test_pixelspace_y = pixelspace_y[0];
+
+            double test_worldspace_x = (test_pixelspace_x + 0.5 * local_pixelspace_size[0]) * dem.scale(0);
+            double test_worldspace_y = (test_pixelspace_y + 0.5 * local_pixelspace_size[1]) * dem.scale(1);
+
+            double temp[2];
+            temp[0] = gsl_interp_eval(interp_lower, worldspace_x, lower_heights, test_worldspace_x, allocp_lower);
+            temp[1] = gsl_interp_eval(interp_upper, worldspace_x, upper_heights, test_worldspace_x, allocp_upper);
+
+            gsl_interp_init(interp_temp, worldspace_y, temp, 2);
+            double dem_interpolated = gsl_interp_eval(interp_temp, worldspace_y, temp, test_worldspace_y, allocp_temp);
+
+            // assign set of values
+            double h = 0.0;
+            double u = 0.0;
+            double v = 0.0;
+            double mapvalue = 0.0;
+            double bathymetry = dem_interpolated;
+
             subcellIndex(0) = xi;
             subcellIndex(1) = yi;
- 
-            meshPos = patch.getSubcellPosition(subcellIndex);
-            tarch::la::Vector<DIMENSIONS, double> coords = mapMeshToCoordinates(meshPos(0), meshPos(1));
-
-            double X = meshPos(0);
-            double Y = meshPos(1);
-
-            //double bathymetry = bathymetryHelper.getHeight(coords(0),coords(1));
-//            double bathymetry = dem(coords(0), coords(1));
-            double mapvalue = mapMeshToMap(meshPos);
-
-
-            //std::cout << "x " << X << " y " << Y << " c0 " << coords(0) << " c1 " << coords(1) << " b " << bathymetry << std::endl; 
-
-            //std::cout << "bathymetry: " << bathymetry << " @ " << coords(0) << " " << coords(1) << std::endl;
-
-            double r = sqrt((X-x0)*(X-x0) + (Y-y0)*(Y-y0));
-            double h = hl*(r<=radDam) + hr*(r>radDam);
-            double u = hl*ul*(r<=radDam) + hr*ur*(r>radDam);
-            double v = hl*vl*(r<=radDam) + hr*vr*(r>radDam);
-
-#if defined(BREAKINGDAMTEST)
-            bathymetry = 0.0;
-#endif
 
             patch.getAccessor().setValueUNew(subcellIndex, 0, h);
             patch.getAccessor().setValueUNew(subcellIndex, 1, u);
@@ -498,11 +543,22 @@ void peanoclaw::native::scenarios::MekkaFloodSWEScenario::initializePatch(peanoc
  
             patch.getAccessor().setValueUNew(subcellIndex, 4, h * u);
             patch.getAccessor().setValueUNew(subcellIndex, 5, h * v);
+       
+            patch.getAccessor().setParameterWithGhostlayer(subcellIndex, 0, bathymetry);
+
+            // free interpolation
+            gsl_interp_free(interp_lower);
+            gsl_interp_free(interp_upper);
+            gsl_interp_free(interp_temp);
+
+            gsl_interp_accel_free(allocp_lower);
+            gsl_interp_accel_free(allocp_upper);
+            gsl_interp_accel_free(allocp_temp);
         }
     }
 
     //Set bathymetry
-    update(patch);
+    //update(patch);
 
 //    const tarch::la::Vector<DIMENSIONS, int> subdivisionFactor = patch.getSubdivisionFactor();
 //    double min_domainsize = std::min(x_size,y_size);
@@ -519,335 +575,200 @@ tarch::la::Vector<DIMENSIONS,double> peanoclaw::native::scenarios::MekkaFloodSWE
     patchCenter(0) = patchPosition(0) + patchSize(0)/2.0f;
     patchCenter(1) = patchPosition(1) + patchSize(1)/2.0f;
 
-//    double outerRadius = std::max(patchSize(0),patchSize(1))/2.0*sqrt(2);
-
-    //const tarch::la::Vector<DIMENSIONS, double> mekkaPosition = mapCoordinatesToMesh(mekka_lon,mekka_lat);
-
-    // check if mekka is inside or at least near to our current patch
-    //double mekka_distance = sqrt((mekkaPosition(0)-patchCenter(0))*(mekkaPosition(0)-patchCenter(0)) + (mekkaPosition(1)-patchCenter(1))*(mekkaPosition(1)-patchCenter(1)));
- 
     const tarch::la::Vector<DIMENSIONS, double> meshWidth = patch.getSubcellSize();
     const tarch::la::Vector<DIMENSIONS, int> subdivisionFactor = patch.getSubdivisionFactor();
-  
-    // SCALE HERE
-    double x_size = (dem.upper_right(0) - dem.lower_left(0)) / scale;
-    double y_size = (dem.upper_right(1) - dem.lower_left(1)) / scale;
-    tarch::la::Vector<DIMENSIONS, int> subcellIndex;
 
-#if 0
-    double x0=(x_size) * 0.5;
-    double y0=(y_size) * 0.5;
-    double radDam = 0.05*std::min(x_size,y_size);
-    bool isInsideCircle = false;
-    for (int yi = -1; yi < subdivisionFactor(1)+1; yi++) {
-        for (int xi = -1; xi < subdivisionFactor(0)+1; xi++) {
-            subcellIndex(0) = xi;
-            subcellIndex(1) = yi;
- 
-            double X = patchPosition(0) + xi*meshWidth(0);
-            double Y = patchPosition(1) + yi*meshWidth(1);
-  
-            tarch::la::Vector<DIMENSIONS, double> coords = mapMeshToCoordinates(X, Y);
-            //double bathymetry = bathymetryHelper.getHeight(coords(0),coords(1));
-            //double bathymetry = dem(0.0, 0.0);
+    tarch::la::Vector<DIMENSIONS,double> result;
+    result = patchSize;
+    result[0] = result[0] / (subdivisionFactor(0));
+    result[1] = result[1] / (subdivisionFactor(1));
+    if (isInitializing) {
+        bool refine = check_current_domain(patch);
 
-            double r = sqrt((X-x0)*(X-x0) + (Y-y0)*(Y-y0));
+        std::cout << "using maximal mesh width: " << _maximalMeshWidth[0] << " " << _maximalMeshWidth[1] 
+                  << " current patchsize: " << patchSize(0) << " " << patchSize(1)
+                  << " current patch position: " << patchPosition(0) << " " << patchPosition(1)
+                  << std::endl;
 
-#if defined(BREAKINGDAMTEST)
-            bathymetry = 0.0;
-#endif
-            
-            if (yi >= 0 && xi >= 0 
-                && yi < subdivisionFactor(1) && xi < subdivisionFactor(0)
-               ) {
-                //patch.setParameterWithGhostlayer(subcellIndex, 0,  bathymetry);
-            }
-            //patch.setParameterWithGhostlayer(subcellIndex, 0, bathymetry);
-
-            isInsideCircle |=(r <radDam);
-        }
-    }
-    
-    // try to adapt to bathymetry
-    // loop starts at one, due to central finite differences
-    double max_curvature = 0.0; // second derivative
-    for (int yi = 1; yi < subdivisionFactor(1)-1; yi++) {
-        for (int xi = 1; xi < subdivisionFactor(0)-1; xi++) {
-            subcellIndex(0) = xi;
-            subcellIndex(1) = yi;
-            double bathemetry_11= patch.getParameterWithoutGhostlayer(subcellIndex, 0);
-
-            subcellIndex(0) = xi-1;
-            subcellIndex(1) = yi;
-            double bathemetry_01= patch.getParameterWithoutGhostlayer(subcellIndex, 0);
- 
-            subcellIndex(0) = xi+1;
-            subcellIndex(1) = yi;
-            double bathemetry_21= patch.getParameterWithoutGhostlayer(subcellIndex, 0);
- 
-            double curvature_x = std::abs((bathemetry_21 + 2*bathemetry_11 + bathemetry_01)/meshWidth(0));
-
-            subcellIndex(0) = xi;
-            subcellIndex(1) = yi-1;
-            double bathemetry_10= patch.getParameterWithoutGhostlayer(subcellIndex, 0);
- 
-            subcellIndex(0) = xi;
-            subcellIndex(1) = yi+1;
-            double bathemetry_12= patch.getParameterWithoutGhostlayer(subcellIndex, 0);
-
-            double curvature_y = std::abs((bathemetry_12 + 2*bathemetry_11 + bathemetry_10)/meshWidth(1));
-
-            max_curvature = std::max(max_curvature, std::max(curvature_x,curvature_y));
-        }
-    }
-
-
-      // compute spatial gradient for u and v
-      double dx = patch.getSubcellSize()(0);
-      double dy = patch.getSubcellSize()(1);
-      
-      double max_gradient = 0.0;
-      double max_q0 = 0.0;
-      double min_q0 = 0.0;
- 
-      subcellIndex(0) = 0;
-      subcellIndex(1) = 0;
-      max_q0 = patch.getAccessor().getValueUOld(subcellIndex, 0);
-      min_q0 = patch.getAccessor().getValueUOld(subcellIndex, 0);
-
-      // ensure that gradients between patches are smooth
- 
-      for (int y=0; y < subdivisionFactor(1); y++) {
-          // left boundary
-          {
-            int x = 0;
-            subcellIndex(0) = x-1;
-            subcellIndex(1) = y;
-            double u_01 = patch.getAccessor().getValueUOld(subcellIndex, 4);
-                     
-            subcellIndex(0) = x+1;
-            subcellIndex(1) = y;
-            double u_21 = patch.getAccessor().getValueUOld(subcellIndex, 4);
-          
-            subcellIndex(0) = x;
-            subcellIndex(1) = y-1;
-            double v_10 = patch.getAccessor().getValueUOld(subcellIndex, 5);
-                     
-            subcellIndex(0) = x;
-            subcellIndex(1) = y+1;
-            double v_12 = patch.getAccessor().getValueUOld(subcellIndex, 5);
-
-            double du = (u_21 - u_01)/(2*dx);
-            double dv = (v_12 - v_10)/(2*dy);
-
-            max_gradient = std::max(max_gradient, std::abs(du));
-            max_gradient = std::max(max_gradient, std::abs(dv));
-        }
-
-          // right boundary
-          {
-            int x = subdivisionFactor(0)-1;
-            subcellIndex(0) = x-1;
-            subcellIndex(1) = y;
-            double u_01 = patch.getAccessor().getValueUOld(subcellIndex, 4);
-                     
-            subcellIndex(0) = x+1;
-            subcellIndex(1) = y;
-            double u_21 = patch.getAccessor().getValueUOld(subcellIndex, 4);
-          
-            subcellIndex(0) = x;
-            subcellIndex(1) = y-1;
-            double v_10 = patch.getAccessor().getValueUOld(subcellIndex, 5);
-                     
-            subcellIndex(0) = x;
-            subcellIndex(1) = y+1;
-            double v_12 = patch.getAccessor().getValueUOld(subcellIndex, 5);
-
-            double du = (u_21 - u_01)/(2*dx);
-            double dv = (v_12 - v_10)/(2*dy);
-
-            max_gradient = std::max(max_gradient, std::abs(du));
-            max_gradient = std::max(max_gradient, std::abs(dv));
-        }
-
-      }
-
-      for (int x=0; x< subdivisionFactor(0); x++) {
-          // bottom boundary
-          {
-            int y = 0;
-            subcellIndex(0) = x-1;
-            subcellIndex(1) = y;
-            double u_01 = patch.getAccessor().getValueUOld(subcellIndex, 4);
-                     
-            subcellIndex(0) = x+1;
-            subcellIndex(1) = y;
-            double u_21 = patch.getAccessor().getValueUOld(subcellIndex, 4);
-          
-            subcellIndex(0) = x;
-            subcellIndex(1) = y-1;
-            double v_10 = patch.getAccessor().getValueUOld(subcellIndex, 5);
-                     
-            subcellIndex(0) = x;
-            subcellIndex(1) = y+1;
-            double v_12 = patch.getAccessor().getValueUOld(subcellIndex, 5);
-
-            double du = (u_21 - u_01)/(2*dx);
-            double dv = (v_12 - v_10)/(2*dy);
-
-            max_gradient = std::max(max_gradient, std::abs(du));
-            max_gradient = std::max(max_gradient, std::abs(dv));
-        }
-
-          // top boundary
-          {
-            int y = subdivisionFactor(1)-1;
-            subcellIndex(0) = x-1;
-            subcellIndex(1) = y;
-            double u_01 = patch.getAccessor().getValueUOld(subcellIndex, 4);
-                     
-            subcellIndex(0) = x+1;
-            subcellIndex(1) = y;
-            double u_21 = patch.getAccessor().getValueUOld(subcellIndex, 4);
-          
-            subcellIndex(0) = x;
-            subcellIndex(1) = y-1;
-            double v_10 = patch.getAccessor().getValueUOld(subcellIndex, 5);
-                     
-            subcellIndex(0) = x;
-            subcellIndex(1) = y+1;
-            double v_12 = patch.getAccessor().getValueUOld(subcellIndex, 5);
-
-            double du = (u_21 - u_01)/(2*dx);
-            double dv = (v_12 - v_10)/(2*dy);
-
-            max_gradient = std::max(max_gradient, std::abs(du));
-            max_gradient = std::max(max_gradient, std::abs(dv));
-        }
-
-      }
-
-#endif
-
-    double max_meshwidth = std::max(meshWidth(0),meshWidth(1));
-#if 0
-    double min_meshwidth = std::min(meshWidth(0),meshWidth(1));
-    // plain value based
-    double interpolation_error_height = interpolation_error(patch, 0);
-    double interpolation_error_u = interpolation_error(patch, 1);
-    double interpolation_error_v = interpolation_error(patch, 2);
-    //double interpolation_error_z = interpolation_error(patch, 3);
-
-    double max_interpolation_error = 0.0;
-    //max_interpolation_error = std::max(max_interpolation_error, interpolation_error_height);
-    //max_interpolation_error = std::max(max_interpolation_error, interpolation_error_u);
-    //max_interpolation_error = std::max(max_interpolation_error, interpolation_error_v);
-    //max_interpolation_error = std::max(max_interpolation_error, interpolation_error_z);
-  
-    // experiment: scale error with meshwidth ( not to bad )
-    max_interpolation_error = max_interpolation_error / min_meshwidth;
-#endif
-
-#if 1
-    // gradient based
-    double interpolation_error_gradient_height = interpolation_error_gradient(patch, 0);
-    double interpolation_error_gradient_u = interpolation_error_gradient(patch, 1);
-    double interpolation_error_gradient_v = interpolation_error_gradient(patch, 2);
-    //double interpolation_error_gradient_z = interpolation_error_gradient(patch, 3);
-
-    double max_interpolation_error_gradient = 0.0;
-    max_interpolation_error_gradient = std::max(max_interpolation_error_gradient, interpolation_error_gradient_height);
-    max_interpolation_error_gradient = std::max(max_interpolation_error_gradient, interpolation_error_gradient_u);
-    max_interpolation_error_gradient = std::max(max_interpolation_error_gradient, interpolation_error_gradient_v);
-    //max_interpolation_error_gradient = std::max(max_interpolation_error_gradient, interpolation_error_gradient_z);
-#endif
-
-#if 0
-    // gradient based between coarse and fine grid
-    double interpolation_error_gradient_height = interpolation_error_coarse_fine_gradient(patch, 0);
-    double interpolation_error_gradient_u = interpolation_error_coarse_fine_gradient(patch, 1);
-    double interpolation_error_gradient_v = interpolation_error_coarse_fine_gradient(patch, 2);
-    //double interpolation_error_gradient_z = interpolation_error_coarse_fine_gradient(patch, 3);
-
-    double max_interpolation_error_gradient = 0.0;
-    max_interpolation_error_gradient = std::max(max_interpolation_error_gradient, interpolation_error_gradient_height);
-    max_interpolation_error_gradient = std::max(max_interpolation_error_gradient, interpolation_error_gradient_u);
-    max_interpolation_error_gradient = std::max(max_interpolation_error_gradient, interpolation_error_gradient_v);
-    //max_interpolation_error_gradient = std::max(max_interpolation_error_gradient, interpolation_error_gradient_z);
-#endif
-
-    double min_domainsize = std::min(x_size,y_size);
-    int min_subdivisionFactor = std::min(subdivisionFactor(0),subdivisionFactor(1));
-    int max_subdivisionFactor = std::max(subdivisionFactor(0),subdivisionFactor(1));
- 
-    // AMR requires some time to rest, so lets give the patches a little bit more time
-    //if (patch.getAge() >= 2) { // 2 works in sequential mode
-        retval = max_meshwidth;
-        //std::cout << "interpolation error inside patch: " << max_error << " " << " with ghostlayer " << max_error_ghost << std::endl;
-
-        //std::cout << "max interpolation error " << max_interpolation_error << std::endl;
-        //std::cout << "max interpolation error gradient " << max_interpolation_error_gradient << std::endl;
-        if (max_interpolation_error_gradient > 1.e-1) { // 1.e-2 and basic interpolation gradient used for POSTER
-            //std::cout << "interpolation error inside patch: " << max_error << " " << " with ghostlayer " << max_error_ghost << std::endl;
-            //std::cout << "refining!" << std::endl;
-//            retval = retval / (3.0 * max_subdivisionFactor);
-            //retval = x_size/patch.getSubdivisionFactor()(0)/81.0;
-          retval = _minialMeshWidth(0);
+        if (refine) {
+            std::cout << "init: we need to refine!" << std::endl;
+            result[0] = result[0] / 3;
+            result[1] = result[1] / 3;
         } else {
-//            retval = retval * (3.0 * max_subdivisionFactor);
-            //retval = x_size/patch.getSubdivisionFactor()(0)/9.0;
-          retval = _maximalMeshWidth(0);
+            std::cout << "init: all good" << std::endl;
         }
-        patch.resetAge();
-//    } else {
-//        retval = max_meshwidth;
-//    }
+    } else {
+        //result[0] = patchSize(0) / subdivisionFactor(0);
+        //result[0] = patchSize(1) / subdivisionFactor(1);
+        bool refine = check_current_domain(patch);
+
+        if (refine) {
+            std::cout << "adaptive: we need to refine!" << std::endl;
+            result = patchSize;
+            result[0] = result[0] /3;
+            result[1] = result[1] /3;
+        } else {
+            std::cout << "adaptive: all good" << std::endl;
+        }
+    }
+    return result;
+}
+
+
+// TODO: replace loops with standard loops
+// TODO: if refinement good enough: fill local patch with values
+bool peanoclaw::native::scenarios::MekkaFloodSWEScenario::check_current_domain(
+    peanoclaw::Patch& patch
+) {
+    double min_error = 0.0;
+    double max_error = 0.0;
+    double maxabs_error = 0.0;
+
+    // --------------------------------------------------- //
+
+    // peano refinement
+    size_t refinement[2] = {3,3};
+
+    // TODO: compute pixelspace offset from patch position
+    const tarch::la::Vector<DIMENSIONS, double> tree_position = patch.getPosition();
+    const tarch::la::Vector<DIMENSIONS, double> patchSize = patch.getSize();
+
+    ssize_t domain_pixelspace_offset[2] = {round(tree_position[0]*scale),round(tree_position[1]*scale)};
   
-    // ensure minimum refinement
-    if (retval > (min_domainsize / (3.0 * max_subdivisionFactor))) {
-        //std::cout << "refining  " << retval << " vs " << min_domainsize / (1.0 * max_subdivisionFactor) <<  std::endl;
-        retval = min_domainsize / (3.0 * max_subdivisionFactor);
-        patch.resetAge();
-    }
+    const tarch::la::Vector<DIMENSIONS, int> subdivisionFactor = patch.getSubdivisionFactor();
+    ssize_t patch_cells[2];
+    patch_cells[0] = subdivisionFactor[0];
+    patch_cells[1] = subdivisionFactor[1];
+
+    ssize_t patch_vertices[2];
+    patch_vertices[0] = patch_cells[0]+1;
+    patch_vertices[1] = patch_cells[1]+1;
+
+    double local_pixelspace_size[2];
+    local_pixelspace_size[0] = (patchSize[0]*scale) / (patch_vertices[0]-1);
+    local_pixelspace_size[1] = (patchSize[1]*scale) / (patch_vertices[1]-1);
+
+    // TODO
+    // if (local_pixelspace_size <= 1) abort
+
+
+    for (ssize_t patch_y = 0; patch_y < patch_cells[1]; ++patch_y) {
+        for (ssize_t patch_x = 0; patch_x < patch_cells[0]; ++patch_x) {
+            ssize_t position[2] = {patch_x, patch_y};
  
-    // ensure maximum refinement
-    if (retval < (min_domainsize / (9.0 * max_subdivisionFactor))) { 
-        //std::cout << "too small refinement!!! " << retval << " vs " << (min_domainsize / (81.0 * max_subdivisionFactor)) <<  std::endl;
-        retval = min_domainsize / (9.0 * max_subdivisionFactor);
-        patch.resetAge();
+            int pixelspace_x[2];
+            int pixelspace_y[2];
+
+            pixelspace_x[0] = domain_pixelspace_offset[0] + round(local_pixelspace_size[0] * position[0]);
+            pixelspace_x[1] = domain_pixelspace_offset[0] + round(local_pixelspace_size[0] * (position[0]+1));
+            pixelspace_y[0] = domain_pixelspace_offset[1] + round(local_pixelspace_size[1] * position[1]);
+            pixelspace_y[1] = domain_pixelspace_offset[1] + round(local_pixelspace_size[1] * (position[1]+1));
+
+            // cell corners
+            float dem_height_x0y0 = dem(pixelspace_x[0], pixelspace_y[0]);
+            float dem_height_x1y0 = dem(pixelspace_x[1], pixelspace_y[0]);
+            float dem_height_x0y1 = dem(pixelspace_x[0], pixelspace_y[1]);
+            float dem_height_x1y1 = dem(pixelspace_x[1], pixelspace_y[1]);
+
+#if !defined(NDEBUG)
+            std::cout << "position: " << position[0] << " " << position[1] 
+                      << " pixelspace x range: " << pixelspace_x[0] << " - " << pixelspace_x[1]-1
+                      << " pixelspace y range: " << pixelspace_y[0] << " - " << pixelspace_y[1]-1
+                      << " worldspace x range: " << pixelspace_x[0] * dem.scale(0) << " - " << (pixelspace_x[1]-1) * dem.scale(0)
+                      << " worldspace y range: " << pixelspace_y[0] * dem.scale(1) << " - " << (pixelspace_y[1]-1) * dem.scale(1)
+                      << " heights: " << dem_height_x0y0 << " " << dem_height_x1y0
+                      << " " << dem_height_x0y1 << " " << dem_height_x1y1
+                      << std::endl;
+#endif
+
+            double worldspace_x[2];
+            double worldspace_y[2];
+
+            worldspace_x[0] = pixelspace_x[0] * dem.scale(0);
+            worldspace_x[1] = pixelspace_x[1] * dem.scale(0);
+            worldspace_y[0] = pixelspace_y[0] * dem.scale(1);
+            worldspace_y[1] = pixelspace_y[1] * dem.scale(1);
+
+            double lower_heights[2] = {dem_height_x0y0, dem_height_x1y0};
+            double upper_heights[2] = {dem_height_x0y1, dem_height_x1y1};
+
+            // setup interpolation
+            gsl_interp *interp_lower = gsl_interp_alloc(gsl_interp_linear,2);
+            gsl_interp_accel *allocp_lower = gsl_interp_accel_alloc();
+
+            gsl_interp *interp_upper = gsl_interp_alloc(gsl_interp_linear,2);
+            gsl_interp_accel *allocp_upper = gsl_interp_accel_alloc();
+
+            gsl_interp_init(interp_lower, worldspace_x, lower_heights, 2);
+            gsl_interp_init(interp_upper, worldspace_x, upper_heights, 2);
+
+            gsl_interp *interp_temp = gsl_interp_alloc(gsl_interp_linear,2);
+            gsl_interp_accel *allocp_temp = gsl_interp_accel_alloc();
+
+
+            ssize_t dem_vertices[2];
+            dem_vertices[0] = pixelspace_x[1] - pixelspace_x[0];
+            dem_vertices[1] = pixelspace_y[1] - pixelspace_y[0];
+
+            // only refine if we actually have some data points left
+            if (dem_vertices[0] > refinement[0] && dem_vertices[1] > refinement[1]) {
+                for (ssize_t demloop_y=0; demloop_y < dem_vertices[1]; ++demloop_y) {
+                    for (ssize_t demloop_x=0; demloop_x < dem_vertices[0]; ++demloop_x) {
+                        ssize_t dem_position[2] = {demloop_x, demloop_y};
+
+                        int test_pixelspace_x = dem_position[0] + pixelspace_x[0];
+                        int test_pixelspace_y = dem_position[1] + pixelspace_y[0];
+                        float dem_height = dem(test_pixelspace_x, test_pixelspace_y);
+
+                        double test_worldspace_x = test_pixelspace_x * dem.scale(0);
+                        double test_worldspace_y = test_pixelspace_y * dem.scale(1);
+
+                        double temp[2];
+                        temp[0] = gsl_interp_eval(interp_lower, worldspace_x, lower_heights, test_worldspace_x, allocp_lower);
+                        temp[1] = gsl_interp_eval(interp_upper, worldspace_x, upper_heights, test_worldspace_x, allocp_upper);
+
+                        gsl_interp_init(interp_temp, worldspace_y, temp, 2);
+                        double dem_interpolated = gsl_interp_eval(interp_temp, worldspace_y, temp, test_worldspace_y, allocp_temp);
+
+                        double error = dem_interpolated - dem_height;
+                        min_error = std::min(min_error, error);
+                        max_error = std::max(max_error, error);
+                        maxabs_error = std::max(std::abs(max_error), std::abs(min_error));
+
+                    } // demloop_x
+                } // demloop_y
+            } else {
+#if !defined(NDEBUG)
+                std::cout << "reached resolution of dataset" << std::endl;
+#endif
+            }
+
+            // free interpolation
+            gsl_interp_free(interp_lower);
+            gsl_interp_free(interp_upper);
+            gsl_interp_free(interp_temp);
+
+            gsl_interp_accel_free(allocp_lower);
+            gsl_interp_accel_free(allocp_upper);
+            gsl_interp_accel_free(allocp_temp);
+
+            // summary
+            // go to the next cell
+        }
     }
 
-    /*if (mekka_distance > outerRadius) {
-        retval = domainSize/6/243;
-    } else {
-        //retval = 1e-3;
-        retval = domainSize/6/243;
-    }*/
+    bool refine = (maxabs_error > 1e1);
 
-    /*if (meshWidth(0) < 1e-4 || max_curvature > 1e1) {
-        retval = meshWidth(0);
-    } else {
-        //std::cout << "max_curvature is: " << max_curvature << std::endl;
-        retval = meshWidth(0)/3.0;
-    }*/
-
-    /*if (isInsideCircle && meshWidth(0) > 3e-3) {
-        retval = meshWidth(0)/3.0;
-    } else {
-        retval = meshWidth(0);
-    }*/
-    return retval;
-
-    //TODO unterweg debug
-//    if(std::abs(patch.getPosition()(0) - 3000) < 500 && patch.getLevel() < 5 && !isInitializing) {
-//      return patch.getSubcellSize() / 3.0;
-////      return x_size/16/27.0;
-//    } else if( std::abs(patch.getPosition()(0) - 3000) < 500 ){
-//      return patch.getSubcellSize();
-//    } else {
-//      return patch.getSubcellSize() * 3.0;
-////      return x_size/16/9.0;
-//    }
+#if !defined(NDEBUG)
+    if (refine) {
+        std::cout << "we need to refine patch: "
+                  //<< " min error: " << min_error
+                  //<< " max error: " << max_error
+                  << " maxabs error: " << maxabs_error
+                  << std::endl;
+    }
+#endif
+    return refine;
 }
  
 void peanoclaw::native::scenarios::MekkaFloodSWEScenario::update(peanoclaw::Patch& patch) {

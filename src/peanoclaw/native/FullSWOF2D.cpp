@@ -235,7 +235,7 @@ void peanoclaw::native::FullSWOF2D::solveTimestep(
         //std::cout << "calculation took " << time << std::endl;
 
         if (scheme->getVerif() == 0) {
-            std::cout << "scheme retry activated!" << std::endl;
+            //std::cout << "scheme retry activated!" << std::endl;
 //            throw "";
             scheme->setMaxTimestep(scheme->getTimestep());
             maximumTimestepSize = scheme->getTimestep();

@@ -34,7 +34,6 @@ const float mekka_lon = 39.0f;
 class peanoclaw::native::scenarios::MekkaFloodSWEScenario : public peanoclaw::native::scenarios::SWEScenario {
     public:
         MekkaFloodSWEScenario(
-          DEM& dem,
           const tarch::la::Vector<DIMENSIONS,int>&    subdivisionFactor,
           const tarch::la::Vector<DIMENSIONS,double>& minimalMeshWidth,
           const tarch::la::Vector<DIMENSIONS,double>& maximalMeshWidth,
@@ -61,7 +60,11 @@ class peanoclaw::native::scenarios::MekkaFloodSWEScenario : public peanoclaw::na
 
         double getInitialTimestepSize() const;
 
+        virtual bool enableRain() const { return true; }
+
     private:
+        bool check_current_domain(peanoclaw::Patch& patch);
+
         tarch::la::Vector<DIMENSIONS, double> mapCoordinatesToMesh(double longitude, double latitude);
         tarch::la::Vector<DIMENSIONS, double> mapMeshToCoordinates(double x, double y);
         double mapMeshToMap(tarch::la::Vector<DIMENSIONS, double>& coords);
@@ -74,7 +77,7 @@ class peanoclaw::native::scenarios::MekkaFloodSWEScenario : public peanoclaw::na
         double                                _globalTimestepSize;
         double                                _endTime;
 
-        DEM& dem;
+        DEM dem;
         //BathymetryHelper bathymetryHelper;
         
 #if 0

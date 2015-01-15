@@ -157,7 +157,7 @@ if compiler == 'gcc':
    else:
      cxx = 'mpicxx'
      cppdefines.append('MPICH_SKIP_MPICXX')
-     environmentVariables['OMPI_CXX'] = 'g++-4.8'
+     environmentVariables['OMPI_CXX'] = 'g++'
    ccflags.append('-Wall')
    ccflags.append('-Wstrict-aliasing')
    ccflags.append('-fstrict-aliasing')
@@ -332,6 +332,7 @@ elif solver == 'fullswof2d':
   cpppath.append( join(fullSWOF2DPath, 'Headers/libboundaryconditions') )
   cpppath.append( join(fullSWOF2DPath, 'Headers/libparameters') )
   libs.append('png') # for texture file
+  libs.append('gsl') # for interpolation
   
   swashes = ARGUMENTS.get('swashes', 'swashes_no')
   swashesPath = '../swashes'
