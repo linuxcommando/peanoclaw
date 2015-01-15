@@ -598,19 +598,26 @@ tarch::la::Vector<DIMENSIONS,double> peanoclaw::native::scenarios::MekkaFloodSWE
             std::cout << "init: all good" << std::endl;
         }
     } else {
-        //result[0] = patchSize(0) / subdivisionFactor(0);
-        //result[0] = patchSize(1) / subdivisionFactor(1);
         bool refine = check_current_domain(patch);
 
         if (refine) {
             std::cout << "adaptive: we need to refine!" << std::endl;
-            result = patchSize;
             result[0] = result[0] /3;
             result[1] = result[1] /3;
         } else {
-            std::cout << "adaptive: all good" << std::endl;
+            //std::cout << "adaptive: all good" << std::endl;
         }
     }
+
+    // control refinement depth
+
+    // minimum depth
+    result[0] = std::min(_maximalMeshWidth[0], result[0]);
+    result[1] = std::min(_maximalMeshWidth[1], result[1]);
+
+    // maximum depth
+    result[0] = std::max(_minialMeshWidth[0], result[0]);
+    result[1] = std::max(_minialMeshWidth[1], result[1]);
     return result;
 }
 
@@ -757,7 +764,7 @@ bool peanoclaw::native::scenarios::MekkaFloodSWEScenario::check_current_domain(
         }
     }
 
-    bool refine = (maxabs_error > 1e1);
+    bool refine = (maxabs_error > 1e-2);
 
 #if !defined(NDEBUG)
     if (refine) {
@@ -791,6 +798,7 @@ void peanoclaw::native::scenarios::MekkaFloodSWEScenario::update(peanoclaw::Patc
 //        }
 //    }
 
+#if 0
   tarch::la::Vector<DIMENSIONS, int> subcellIndex;
   tarch::la::Vector<DIMENSIONS, double> meshPos;
   for (int yi = -patch.getGhostlayerWidth(); yi < patch.getSubdivisionFactor()(1) + patch.getGhostlayerWidth(); yi++) {
@@ -806,6 +814,111 @@ void peanoclaw::native::scenarios::MekkaFloodSWEScenario::update(peanoclaw::Patc
       patch.getAccessor().setParameterWithGhostlayer(subcellIndex, 0, bathymetry);
     }
   }
+#endif
+
+    const tarch::la::Vector<DIMENSIONS, double> tree_position = patch.getPosition();
+    const tarch::la::Vector<DIMENSIONS, double> patchSize = patch.getSize();
+
+    ssize_t domain_pixelspace_offset[2] = {round(tree_position[0]*scale),round(tree_position[1]*scale)};
+  
+    const tarch::la::Vector<DIMENSIONS, int> subdivisionFactor = patch.getSubdivisionFactor();
+    ssize_t patch_cells[2];
+    patch_cells[0] = subdivisionFactor[0];
+    patch_cells[1] = subdivisionFactor[1];
+
+    ssize_t patch_vertices[2];
+    patch_vertices[0] = patch_cells[0]+1;
+    patch_vertices[1] = patch_cells[1]+1;
+
+    double local_pixelspace_size[2];
+    local_pixelspace_size[0] = (patchSize[0]*scale) / (patch_vertices[0]-1);
+    local_pixelspace_size[1] = (patchSize[1]*scale) / (patch_vertices[1]-1);
+
+
+    // initialize new part only
+    tarch::la::Vector<DIMENSIONS, int> subcellIndex;
+    tarch::la::Vector<DIMENSIONS, double> meshPos;
+    for (int yi = 0; yi < patch.getSubdivisionFactor()(1); yi++) {
+        for (int xi = 0; xi < patch.getSubdivisionFactor()(0); xi++) {
+            // evaluate cell centers
+            ssize_t position[2] = {xi, yi};
+ 
+            int pixelspace_x[2];
+            int pixelspace_y[2];
+
+            pixelspace_x[0] = domain_pixelspace_offset[0] + round(local_pixelspace_size[0] * position[0]);
+            pixelspace_x[1] = domain_pixelspace_offset[0] + round(local_pixelspace_size[0] * (position[0]+1));
+            pixelspace_y[0] = domain_pixelspace_offset[1] + round(local_pixelspace_size[1] * position[1]);
+            pixelspace_y[1] = domain_pixelspace_offset[1] + round(local_pixelspace_size[1] * (position[1]+1));
+
+            // cell corners
+            float dem_height_x0y0 = dem(pixelspace_x[0], pixelspace_y[0]);
+            float dem_height_x1y0 = dem(pixelspace_x[1], pixelspace_y[0]);
+            float dem_height_x0y1 = dem(pixelspace_x[0], pixelspace_y[1]);
+            float dem_height_x1y1 = dem(pixelspace_x[1], pixelspace_y[1]);
+
+            double worldspace_x[2];
+            double worldspace_y[2];
+
+            worldspace_x[0] = pixelspace_x[0] * dem.scale(0);
+            worldspace_x[1] = pixelspace_x[1] * dem.scale(0);
+            worldspace_y[0] = pixelspace_y[0] * dem.scale(1);
+            worldspace_y[1] = pixelspace_y[1] * dem.scale(1);
+
+            double lower_heights[2] = {dem_height_x0y0, dem_height_x1y0};
+            double upper_heights[2] = {dem_height_x0y1, dem_height_x1y1};
+
+            // setup interpolation using cell corners
+            gsl_interp *interp_lower = gsl_interp_alloc(gsl_interp_linear,2);
+            gsl_interp_accel *allocp_lower = gsl_interp_accel_alloc();
+
+            gsl_interp *interp_upper = gsl_interp_alloc(gsl_interp_linear,2);
+            gsl_interp_accel *allocp_upper = gsl_interp_accel_alloc();
+
+            gsl_interp_init(interp_lower, worldspace_x, lower_heights, 2);
+            gsl_interp_init(interp_upper, worldspace_x, upper_heights, 2);
+
+            gsl_interp *interp_temp = gsl_interp_alloc(gsl_interp_linear,2);
+            gsl_interp_accel *allocp_temp = gsl_interp_accel_alloc();
+
+
+            ssize_t dem_vertices[2];
+            dem_vertices[0] = pixelspace_x[1] - pixelspace_x[0];
+            dem_vertices[1] = pixelspace_y[1] - pixelspace_y[0];
+
+            // interpolate on cell center going from lower left corner of cell
+            int test_pixelspace_x = pixelspace_x[0];
+            int test_pixelspace_y = pixelspace_y[0];
+
+            double test_worldspace_x = (test_pixelspace_x + 0.5 * local_pixelspace_size[0]) * dem.scale(0);
+            double test_worldspace_y = (test_pixelspace_y + 0.5 * local_pixelspace_size[1]) * dem.scale(1);
+
+            double temp[2];
+            temp[0] = gsl_interp_eval(interp_lower, worldspace_x, lower_heights, test_worldspace_x, allocp_lower);
+            temp[1] = gsl_interp_eval(interp_upper, worldspace_x, upper_heights, test_worldspace_x, allocp_upper);
+
+            gsl_interp_init(interp_temp, worldspace_y, temp, 2);
+            double dem_interpolated = gsl_interp_eval(interp_temp, worldspace_y, temp, test_worldspace_y, allocp_temp);
+
+            // assign updated bathymetry values
+            double bathymetry = dem_interpolated;
+
+            subcellIndex(0) = xi;
+            subcellIndex(1) = yi;
+
+            // TODO: value from topological map? into parameter without ghostlayer?
+            patch.getAccessor().setParameterWithGhostlayer(subcellIndex, 0, bathymetry);
+
+            // free interpolation
+            gsl_interp_free(interp_lower);
+            gsl_interp_free(interp_upper);
+            gsl_interp_free(interp_temp);
+
+            gsl_interp_accel_free(allocp_lower);
+            gsl_interp_accel_free(allocp_upper);
+            gsl_interp_accel_free(allocp_temp);
+        }
+    }
 }
 
 tarch::la::Vector<DIMENSIONS,double> peanoclaw::native::scenarios::MekkaFloodSWEScenario::getDomainOffset() const {
