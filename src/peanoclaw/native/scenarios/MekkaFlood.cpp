@@ -467,11 +467,20 @@ void peanoclaw::native::scenarios::MekkaFloodSWEScenario::initializePatch(peanoc
             pixelspace_y[1] = domain_pixelspace_offset[1] + round(local_pixelspace_size[1] * (position[1]+1));
 
             // cell corners
-            float dem_height_x0y0 = dem(pixelspace_x[0], pixelspace_y[0]);
-            float dem_height_x1y0 = dem(pixelspace_x[1], pixelspace_y[0]);
-            float dem_height_x0y1 = dem(pixelspace_x[0], pixelspace_y[1]);
-            float dem_height_x1y1 = dem(pixelspace_x[1], pixelspace_y[1]);
+            float dem_height_x0y0 = 0.0;
+            float dem_height_x1y0 = 0.0;
+            float dem_height_x0y1 = 0.0;
+            float dem_height_x1y1 = 0.0;
 
+            if (pixelspace_x[0] >= 0 && pixelspace_x[1] < dem.dimension(0) 
+             && pixelspace_y[0] >= 0 && pixelspace_y[1] <= dem.dimension(1)) 
+            {
+                dem_height_x0y0 = dem(pixelspace_x[0], pixelspace_y[0]);
+                dem_height_x1y0 = dem(pixelspace_x[1], pixelspace_y[0]);
+                dem_height_x0y1 = dem(pixelspace_x[0], pixelspace_y[1]);
+                dem_height_x1y1 = dem(pixelspace_x[1], pixelspace_y[1]);
+            }
+ 
 #if !defined(NDEBUG)
             std::cout << "position: " << position[0] << " " << position[1] 
                       << " pixelspace x range: " << pixelspace_x[0] << " - " << pixelspace_x[1]-1
@@ -544,7 +553,7 @@ void peanoclaw::native::scenarios::MekkaFloodSWEScenario::initializePatch(peanoc
             patch.getAccessor().setValueUNew(subcellIndex, 4, h * u);
             patch.getAccessor().setValueUNew(subcellIndex, 5, h * v);
        
-            patch.getAccessor().setParameterWithGhostlayer(subcellIndex, 0, bathymetry);
+            //patch.getAccessor().setParameterWithGhostlayer(subcellIndex, 0, bathymetry);
 
             // free interpolation
             gsl_interp_free(interp_lower);
@@ -558,7 +567,7 @@ void peanoclaw::native::scenarios::MekkaFloodSWEScenario::initializePatch(peanoc
     }
 
     //Set bathymetry
-    //update(patch);
+    update(patch);
 
 //    const tarch::la::Vector<DIMENSIONS, int> subdivisionFactor = patch.getSubdivisionFactor();
 //    double min_domainsize = std::min(x_size,y_size);
@@ -600,24 +609,24 @@ tarch::la::Vector<DIMENSIONS,double> peanoclaw::native::scenarios::MekkaFloodSWE
     } else {
         bool refine = check_current_domain(patch);
 
-        if (refine) {
+        /*if (refine) {
             std::cout << "adaptive: we need to refine!" << std::endl;
             result[0] = result[0] /3;
             result[1] = result[1] /3;
         } else {
             //std::cout << "adaptive: all good" << std::endl;
-        }
+        }*/
     }
 
     // control refinement depth
 
     // minimum depth
-    result[0] = std::min(_maximalMeshWidth[0], result[0]);
-    result[1] = std::min(_maximalMeshWidth[1], result[1]);
+    /*result[0] = std::min(_maximalMeshWidth[0], result[0]);
+    result[1] = std::min(_maximalMeshWidth[1], result[1]);*/
 
     // maximum depth
-    result[0] = std::max(_minialMeshWidth[0], result[0]);
-    result[1] = std::max(_minialMeshWidth[1], result[1]);
+    /*result[0] = std::max(_minialMeshWidth[0], result[0]);
+    result[1] = std::max(_minialMeshWidth[1], result[1]);*/
     return result;
 }
 
@@ -764,7 +773,7 @@ bool peanoclaw::native::scenarios::MekkaFloodSWEScenario::check_current_domain(
         }
     }
 
-    bool refine = (maxabs_error > 1e-2);
+    bool refine = (maxabs_error > 1e1);
 
 #if !defined(NDEBUG)
     if (refine) {
@@ -838,8 +847,9 @@ void peanoclaw::native::scenarios::MekkaFloodSWEScenario::update(peanoclaw::Patc
     // initialize new part only
     tarch::la::Vector<DIMENSIONS, int> subcellIndex;
     tarch::la::Vector<DIMENSIONS, double> meshPos;
-    for (int yi = 0; yi < patch.getSubdivisionFactor()(1); yi++) {
-        for (int xi = 0; xi < patch.getSubdivisionFactor()(0); xi++) {
+    std::cout << "update" << std::endl;
+    for (int yi = -patch.getGhostlayerWidth(); yi < patch.getSubdivisionFactor()(1) + patch.getGhostlayerWidth(); yi++) {
+        for (int xi = -patch.getGhostlayerWidth(); xi < patch.getSubdivisionFactor()(0) + patch.getGhostlayerWidth(); xi++) {
             // evaluate cell centers
             ssize_t position[2] = {xi, yi};
  
@@ -852,11 +862,20 @@ void peanoclaw::native::scenarios::MekkaFloodSWEScenario::update(peanoclaw::Patc
             pixelspace_y[1] = domain_pixelspace_offset[1] + round(local_pixelspace_size[1] * (position[1]+1));
 
             // cell corners
-            float dem_height_x0y0 = dem(pixelspace_x[0], pixelspace_y[0]);
-            float dem_height_x1y0 = dem(pixelspace_x[1], pixelspace_y[0]);
-            float dem_height_x0y1 = dem(pixelspace_x[0], pixelspace_y[1]);
-            float dem_height_x1y1 = dem(pixelspace_x[1], pixelspace_y[1]);
-
+            float dem_height_x0y0 = 0.0;
+            float dem_height_x1y0 = 0.0;
+            float dem_height_x0y1 = 0.0;
+            float dem_height_x1y1 = 0.0;
+ 
+            if (pixelspace_x[0] >= 0 && pixelspace_x[1] < dem.dimension(0) 
+             && pixelspace_y[0] >= 0 && pixelspace_y[1] <= dem.dimension(1)) 
+            {
+                dem_height_x0y0 = dem(pixelspace_x[0], pixelspace_y[0]);
+                dem_height_x1y0 = dem(pixelspace_x[1], pixelspace_y[0]);
+                dem_height_x0y1 = dem(pixelspace_x[0], pixelspace_y[1]);
+                dem_height_x1y1 = dem(pixelspace_x[1], pixelspace_y[1]);
+            }
+     
             double worldspace_x[2];
             double worldspace_y[2];
 
