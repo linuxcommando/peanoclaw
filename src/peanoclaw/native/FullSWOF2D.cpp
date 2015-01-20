@@ -783,8 +783,8 @@ void peanoclaw::native::FullSWOF2D::interpolateSolution (
 //  }
 
   //Source: Water Height above Sea Floor -> Absolute Water Height
-  transformToAbsoluteWaterHeightAndMomenta(source, sourceRegion, true); //UOld
-  transformToAbsoluteWaterHeightAndMomenta(source, sourceRegion, false); // UNew
+  //transformToAbsoluteWaterHeightAndMomenta(source, sourceRegion, true); //UOld
+  //transformToAbsoluteWaterHeightAndMomenta(source, sourceRegion, false); // UNew
 
   //Interpolate
   Numerics::interpolateSolution (
@@ -798,11 +798,11 @@ void peanoclaw::native::FullSWOF2D::interpolateSolution (
   );
 
   //Source: Absolute Water Height -> Water Height above Sea Floor
-  transformToRelativeWaterHeightAndVelocities(source, sourceRegion, true); //UOld
-  transformToRelativeWaterHeightAndVelocities(source, sourceRegion, false); // UNew
+  //transformToRelativeWaterHeightAndVelocities(source, sourceRegion, true); //UOld
+  //transformToRelativeWaterHeightAndVelocities(source, sourceRegion, false); // UNew
 
   //Destination: Absolute Water Height -> Water Height above Sea Floor
-  transformToRelativeWaterHeightAndVelocities(destination, destinationRegion, interpolateToUOld);
+  //transformToRelativeWaterHeightAndVelocities(destination, destinationRegion, interpolateToUOld);
 }
 
 void peanoclaw::native::FullSWOF2D::restrictSolution (
@@ -812,8 +812,8 @@ void peanoclaw::native::FullSWOF2D::restrictSolution (
 ) const {
   peanoclaw::geometry::Region sourceRegion(tarch::la::Vector<DIMENSIONS,int>(0), source.getSubdivisionFactor());
 
-  transformToAbsoluteWaterHeightAndMomenta(source, sourceRegion, true); //UOld
-  transformToAbsoluteWaterHeightAndMomenta(source, sourceRegion, false); //UNew
+  //transformToAbsoluteWaterHeightAndMomenta(source, sourceRegion, true); //UOld
+  //transformToAbsoluteWaterHeightAndMomenta(source, sourceRegion, false); //UNew
 
   Numerics::restrictSolution(
     source,
@@ -821,17 +821,17 @@ void peanoclaw::native::FullSWOF2D::restrictSolution (
     restrictOnlyOverlappedRegions
   );
 
-  transformToRelativeWaterHeightAndVelocities(source, sourceRegion, true); //UOld
-  transformToRelativeWaterHeightAndVelocities(source, sourceRegion, false); //UNew
+  //transformToRelativeWaterHeightAndVelocities(source, sourceRegion, true); //UOld
+  //transformToRelativeWaterHeightAndVelocities(source, sourceRegion, false); //UNew
 }
 
 void peanoclaw::native::FullSWOF2D::postProcessRestriction(
   peanoclaw::Patch& destination,
   bool              restrictOnlyOverlappedRegions
 ) const {
-  peanoclaw::geometry::Region destinationRegion(tarch::la::Vector<DIMENSIONS,int>(0), destination.getSubdivisionFactor());
-  transformToRelativeWaterHeightAndVelocities(destination, destinationRegion, true); //UOld
-  transformToRelativeWaterHeightAndVelocities(destination, destinationRegion, false); //UNew
+  //peanoclaw::geometry::Region destinationRegion(tarch::la::Vector<DIMENSIONS,int>(0), destination.getSubdivisionFactor());
+  //transformToRelativeWaterHeightAndVelocities(destination, destinationRegion, true); //UOld
+  //transformToRelativeWaterHeightAndVelocities(destination, destinationRegion, false); //UNew
 }
 
 peanoclaw::native::FullSWOF2D_Parameters::FullSWOF2D_Parameters(
