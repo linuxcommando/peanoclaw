@@ -769,8 +769,8 @@ void peanoclaw::mappings::SolveTimestep::leaveCell(
     // Refine
     for (int i = 0; i < TWO_POWER_D; i++) {
       if (!fineGridVertices[fineGridVerticesEnumerator(i)].isHangingNode()) {
-        fineGridVertices[fineGridVerticesEnumerator(i)].setShouldRefine(true);
-        coarseGridVertices[coarseGridVerticesEnumerator(i)].setSubcellEraseVeto(i);
+        //fineGridVertices[fineGridVerticesEnumerator(i)].setShouldRefine(true);
+        //coarseGridVertices[coarseGridVerticesEnumerator(i)].setSubcellEraseVeto(i);
       }
     }
   } else if (!tarch::la::oneGreater(patch.getSubcellSize() * 3.0,
