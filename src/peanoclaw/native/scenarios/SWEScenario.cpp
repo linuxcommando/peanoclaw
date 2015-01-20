@@ -36,8 +36,8 @@ peanoclaw::native::scenarios::SWEScenario* peanoclaw::native::scenarios::SWEScen
     maximalMeshWidth[1] = (4500.0/(1.0*subdivisionFactor(1)));
  
     tarch::la::Vector<DIMENSIONS, double> minimalMeshWidth;
-    minimalMeshWidth[0] = (8000.0/(27.0*subdivisionFactor(0)));
-    minimalMeshWidth[1] = (4500.0/(27.0*subdivisionFactor(1)));
+    minimalMeshWidth[0] = (8000.0/(81.0*subdivisionFactor(0)));
+    minimalMeshWidth[1] = (4500.0/(81.0*subdivisionFactor(1)));
 
     double globalTimestepSize = 2.0; //0.1;//1.0;
     double endTime = 3600.0; // 100.0;
